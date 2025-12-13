@@ -1,49 +1,580 @@
 <!DOCTYPE html>
-<html>
+
+<html lang="ko">
+
 <head>
-    <title>Viewport Meta</title>
-    <meta name = "viewport" content="usuer-scalable=no, initial-scale=1,maximum-scale=1">
+
+    <meta charset="UTF-8">
+
+    <title>Weather Wave - Auto Hide Submarine</title>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
     <style>
-        *{
-            margin:0;
-            padding:0;
-        }
+
         body {
-            width:960px;
-            margin:0 auto;
+
+            margin: 0;
+
+            background: linear-gradient(to bottom, #001f3f, #000810);
+
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+
+            height: 100vh;
+
             overflow: hidden;
-        }
-        #menu {
-            width:260px;
-            float: left;
-        }
-        #section {
-            width:700px;
-            float:right;
+
+            color: #b0e0e6;
+
+            cursor: default; /* 기본 커서는 보이게 하되, 캔버스 위에서는 숨김 */
+
         }
 
-        li{list-style:none;}
+        
 
-        @media screen and(max-width:767px) {
-            body{width:auto}
-            #menu{width:auto;float:none;}
-            #section {width:auto;float:none;}
+        #ui-layer {
+
+            position: fixed;
+
+            top: 20px;
+
+            left: 0;
+
+            width: 100%;
+
+            display: flex;
+
+            flex-direction: column;
+
+            align-items: center;
+
+            z-index: 100;
+
+            pointer-events: none;
+
+        }
+
+
+
+        h1 {
+
+            font-size: 24px;
+
+            margin: 0 0 10px 0;
+
+            letter-spacing: 4px;
+
+            text-transform: uppercase;
+
+            font-weight: 300;
+
+            text-shadow: 0 0 15px rgba(0, 191, 255, 0.6);
+
+        }
+
+
+
+        .legend {
+
+            display: flex;
+
+            gap: 25px;
+
+            font-size: 12px;
+
+            color: #87CEEB;
+
+            font-weight: 500;
+
+            pointer-events: auto;
+
+        }
+
+        .legend-item { display: flex; align-items: center; }
+
+        .box {
+
+            width: 12px; height: 12px; border-radius: 50%;
+
+            margin-right: 8px; box-shadow: 0 0 5px currentColor;
+
+        }
+
+
+
+        #scroll-wrapper {
+
+            width: 100vw;
+
+            height: 100vh;
+
+            overflow-x: auto;
+
+            overflow-y: hidden;
+
+            scrollbar-width: none; 
+
+            -ms-overflow-style: none;
+
+            display: flex;
+
+            align-items: center;
+
+            cursor: none; /* 그래프 영역 위에서는 커서 숨김 */
+
+        }
+
+        #scroll-wrapper::-webkit-scrollbar { display: none; }
+
+
+
+        #chart-container {
+
+            position: relative;
+
+            height: 600px;
+
+            flex-shrink: 0;
+
+        }
+
+
+
+        canvas {
+
+            display: block;
+
+        }
+
+
+
+        #tooltip {
+
+            position: absolute;
+
+            background: rgba(0, 20, 40, 0.9);
+
+            color: #fff;
+
+            padding: 10px 18px;
+
+            border-radius: 12px;
+
+            font-size: 13px;
+
+            pointer-events: none;
+
+            opacity: 0;
+
+            transition: opacity 0.1s ease;
+
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+
+            border: 1px solid #0077be;
+
+            z-index: 200;
+
+            white-space: nowrap;
+
+            transform: translate(-50%, -140%);
+
+            backdrop-filter: blur(5px);
+
         }
 
     </style>
 
 </head>
+
 <body>
-    <div id="menu">
-        <ul>
-            <li>메뉴A</li>
-            <li>메뉴B</li>
-            <li>메뉴C</li>
-        </ul>
+
+
+
+    <div id="ui-layer">
+
+        <h1>Weather Wave</h1>
+
+        <div class="legend">
+
+            <div class="legend-item"><div class="box" style="background:radial-gradient(circle, #FF7F50, #006994); color: #FF7F50;"></div>Temperature</div>
+
+            <div class="legend-item"><div class="box" style="background:linear-gradient(to right, #00ced1, #7fffd4); color: #00ced1;"></div>Precipitation</div>
+
+            <div class="legend-item"><div class="box" style="background:#000030; color: #000080;"></div>Typhoon</div>
+
+        </div>
+
+        <div style="margin-top:10px; font-size: 11px; opacity: 0.6;">Scroll / Drag horizontally</div>
+
     </div>
-    <div id="section">
-    <h1>Lorem ipsum dolor sit amet</h1>
-    <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+
+
+
+    <div id="scroll-wrapper">
+
+        <div id="chart-container">
+
+            <div id="tooltip"></div>
+
+        </div>
+
     </div>
+
+
+
+<script>
+    // 1. 설정
+    const paddingX = 200; 
+    const effectiveWidth = 4000; 
+    const totalWidth = effectiveWidth + (paddingX * 2);
+    
+    const height = 600;
+    const container = d3.select("#chart-container");
+    const wrapper = document.getElementById("scroll-wrapper");
+    
+    container.style("width", totalWidth + "px");
+
+    const canvas = container.append("canvas")
+        .attr("width", totalWidth)
+        .attr("height", height);
+    const context = canvas.node().getContext("2d");
+
+    let mouseXCanvas = -1000;
+    let mouseYCanvas = -1000;
+    let isHovered = false;
+    let globalTime = Date.now() / 300; // 애니메이션 시간 동기화용
+
+    // 잠수함 이미지
+    const subImg = new Image();
+    subImg.src = "submarine.png"; 
+
+    let subX = -100; 
+    let subY = -100;
+    let targetSubX = -100; 
+    let targetSubY = -100;
+    let isFacingRight = true; 
+
+    let targetScroll = 0;
+    let currentScroll = 0;
+    const verticalOffset = 50; 
+    const baseCenterY = height / 2 + verticalOffset; 
+
+    // 2. 데이터 생성
+    const steps = 800; 
+    const points = [];
+    
+    function gaussian(x, center, sigma, amplitude) {
+        return amplitude * Math.exp(-Math.pow(x - center, 2) / (2 * Math.pow(sigma, 2)));
+    }
+
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const timeValue = t * 60; 
+        
+        const baseFlow = Math.sin(t * Math.PI * 10) * 15;
+
+        // (1) 기온
+        let tempVal = Math.sin((timeValue - 4) * (Math.PI * 2 / 12)) * 1.5; 
+        tempVal += gaussian(t, 0.52, 0.03, 1.2);
+        tempVal -= gaussian(t, 0.22, 0.03, 1.2);
+        
+        // (2) 강수량
+        let precipVal = Math.sin((timeValue - 7) * (Math.PI * 2 / 12)) * 1.0; 
+        precipVal = (precipVal + 1.2) * 0.5;
+        precipVal += gaussian(t, 0.72, 0.04, 1.5);
+
+        // (3) 태풍
+        let typhoonVal = 0.2; 
+        for(let y=0; y<5; y++) {
+            const typhoonPeak = (y * 12 + 8.5) / 60;
+            let intensity = 0.5 + Math.random() * 0.5;
+            if(y === 2) intensity = 1.2; 
+            typhoonVal += gaussian(t, typhoonPeak, 0.015, intensity);
+        }
+
+        points.push({
+            t: t,
+            x: paddingX + (t * effectiveWidth), 
+            baseFlow: baseFlow,
+            tempAmp: (tempVal + 2.5) * 60, 
+            precipAmp: precipVal * 90, 
+            typhoonAmp: typhoonVal * 60,
+            rawTemp: tempVal, 
+            rawPrecip: precipVal
+        });
+    }
+
+    // 3. 색상 설정
+    const colorRain = d3.scaleSequential(d3.interpolateRgb("#00ced1", "#7fffd4")).domain([0.8, 2.0]);
+    const defaultTempColor = "#006994"; 
+
+    // 4. 그리기 함수
+    function drawLayer(keyAmp, offsetFunc, colorCallback, blendMode, baseOpacity) {
+        context.save();
+        const lensRadius = 250; 
+
+        const areaGen = d3.area()
+            .x(d => d.x)
+            .y0(height) // 바닥까지 채움
+            .y1(d => {
+                let scale = 0.35; 
+                let flowScale = 0.35;
+
+                // 렌즈 효과
+                if (isHovered) {
+                    const dist = Math.abs(d.x - mouseXCanvas);
+                    if (dist < lensRadius) {
+                        const expansion = Math.exp(-(dist * dist) / (2 * (lensRadius/2.5) ** 2));
+                        scale += expansion * 0.65;
+                        flowScale += expansion * 0.65;
+                    }
+                }
+                
+                const amp = 15 + d[keyAmp] * scale;
+                const flow = d.baseFlow * flowScale;
+                const move = (offsetFunc ? offsetFunc(d, globalTime) : 0);
+                
+                return baseCenterY + flow + move - amp;
+            })
+            .curve(d3.curveBasis)
+            .context(context);
+
+        context.beginPath();
+        areaGen(points);
+        context.clip();
+
+        if (keyAmp === 'tempAmp') {
+            context.fillStyle = defaultTempColor;
+        } else if (colorCallback) {
+            const gradient = context.createLinearGradient(paddingX, 0, paddingX + effectiveWidth, 0);
+            points.forEach(p => {
+                gradient.addColorStop(p.t, colorCallback(p));
+            });
+            context.fillStyle = gradient;
+        } else {
+            context.fillStyle = '#000030'; 
+        }
+
+        context.globalCompositeOperation = blendMode || 'source-over';
+        context.globalAlpha = baseOpacity;
+        context.fillRect(0, 0, totalWidth, height);
+        context.restore();
+    }
+
+    // 잠수함 그리기
+    function drawSubmarine() {
+        if (!subImg.complete || subImg.naturalWidth === 0) return;
+
+        context.save();
+        
+        // 반응 속도 (조금 더 부드럽게)
+        subX += (targetSubX - subX) * 0.15;
+        subY += (targetSubY - subY) * 0.15;
+
+        const subWidth = 100;
+        const subHeight = subWidth * (subImg.height / subImg.width);
+
+        let dataRatio = (subX - paddingX) / effectiveWidth;
+        dataRatio = Math.max(0, Math.min(1, dataRatio));
+        const idx = Math.floor(dataRatio * steps);
+        const p = points[idx] || points[points.length-1];
+
+        // 조명 색상
+        let lightColorStart = 'rgba(255, 255, 200, 0.6)'; 
+        if (p && p.rawTemp > 0.8) {
+            lightColorStart = 'rgba(255, 69, 0, 0.7)'; 
+        } else if (p && p.rawTemp < -0.2) {
+            lightColorStart = 'rgba(138, 43, 226, 0.7)'; 
+        } else {
+            lightColorStart = 'rgba(224, 255, 255, 0.5)'; 
+        }
+
+        context.translate(subX, subY);
+
+        if (!isFacingRight) {
+            context.scale(-1, 1);
+        }
+
+        context.drawImage(subImg, -subWidth / 2, -subHeight / 2, subWidth, subHeight);
+
+        // 조명 효과
+        context.globalCompositeOperation = 'screen';
+        const lightGrad = context.createRadialGradient(subWidth/2, 0, 5, subWidth/2 + 100, 0, 150);
+        lightGrad.addColorStop(0, lightColorStart);
+        lightGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        context.fillStyle = lightGrad;
+        context.beginPath();
+        context.moveTo(subWidth/3, -10);
+        context.lineTo(subWidth + 150, -60);
+        context.lineTo(subWidth + 150, 60);
+        context.lineTo(subWidth/3, 10);
+        context.fill();
+
+        context.restore();
+    }
+
+    function drawLabels() {
+        context.save();
+        context.textAlign = "center";
+        context.shadowColor = "rgba(255, 255, 255, 0.8)";
+        context.shadowBlur = 8;
+        context.fillStyle = "rgba(255, 255, 255, 0.9)";
+
+        const months = 60; 
+        
+        for (let m = 0; m < months; m++) {
+            const ratio = m / (months - 1);
+            const x = paddingX + ratio * effectiveWidth;
+            
+            const date = new Date(2020, m, 1);
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const monthStr = String(month).padStart(2,'0');
+
+            if (month === 1) {
+                context.font = "bold 13px 'Apple SD Gothic Neo', sans-serif";
+                context.fillStyle = "rgba(255, 255, 255, 0.7)"; 
+                context.fillText(year, x, height - 35); 
+                
+                context.font = "bold 16px 'Apple SD Gothic Neo', sans-serif";
+                context.fillStyle = "rgba(255, 255, 255, 1.0)"; 
+                context.fillText(monthStr, x, height - 15);
+            } else {
+                context.font = "12px 'Apple SD Gothic Neo', sans-serif";
+                context.fillStyle = "rgba(255, 255, 255, 0.5)"; 
+                context.fillText(monthStr, x, height - 15);
+            }
+        }
+        context.restore();
+    }
+
+    // 5. 메인 루프
+    function animate() {
+        globalTime = Date.now() / 300; // 시간 갱신
+
+        currentScroll += (targetScroll - currentScroll) * 0.02;
+        wrapper.scrollLeft = currentScroll;
+
+        context.clearRect(0, 0, totalWidth, height);
+        
+        drawLayer('typhoonAmp', (d, time) => Math.sin(d.t * 5 + time * 0.5) * 10, null, 'multiply', 0.6);
+        drawLayer('precipAmp', (d, time) => Math.sin(d.t * 12 + time) * 5, (p) => p.rawPrecip > 1.0 ? colorRain(p.rawPrecip) : "#00ced1", 'multiply', 0.5);
+        drawLayer('tempAmp', (d, time) => Math.sin(d.t * 15 - time * 1.5) * 3, null, 'hard-light', 0.7);
+
+        drawLabels();
+
+        if (isHovered) {
+            drawSubmarine();
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+    animate();
+
+    // 6. 인터랙션
+    const tooltip = document.getElementById("tooltip");
+    const dateScale = d3.scaleTime()
+        .domain([new Date(2020,0,1), new Date(2024,11,31)])
+        .range([paddingX, paddingX + effectiveWidth]);
+
+    window.addEventListener("mousemove", function(event) {
+        const winWidth = window.innerWidth;
+        const mouseXScreen = event.clientX;
+        
+        const ratio = Math.min(Math.max(mouseXScreen / winWidth, 0), 1);
+        const maxScroll = totalWidth - winWidth;
+        targetScroll = ratio * maxScroll;
+
+        mouseXCanvas = wrapper.scrollLeft + mouseXScreen - wrapper.offsetLeft;
+        const rect = canvas.node().getBoundingClientRect();
+        mouseYCanvas = event.clientY - rect.top;
+
+        // 좌우 패딩 영역 밖이면 숨김
+        if (mouseXCanvas < paddingX || mouseXCanvas > totalWidth - paddingX) {
+            isHovered = false;
+            tooltip.style.opacity = 0;
+            return;
+        }
+
+        isHovered = true;
+
+        // --- 잠수함 위치 계산 로직 ---
+        let dataRatio = (mouseXCanvas - paddingX) / effectiveWidth;
+        dataRatio = Math.max(0, Math.min(1, dataRatio));
+        const idx = Math.floor(dataRatio * steps);
+        const p = points[idx] || points[points.length-1];
+
+        // 1. 태풍 그래프 수면(Surface) Y좌표 계산
+        const lensRadius = 250;
+        let scale = 0.35;
+        let flowScale = 0.35;
+        const dist = Math.abs(p.x - mouseXCanvas);
+        if (dist < lensRadius) {
+            const expansion = Math.exp(-(dist * dist) / (2 * (lensRadius/2.5) ** 2));
+            scale += expansion * 0.65;
+            flowScale += expansion * 0.65;
+        }
+
+        const flow = p.baseFlow * flowScale;
+        const move = Math.sin(p.t * 5 + globalTime * 0.5) * 10; 
+        const amp = 15 + p.typhoonAmp * scale;
+
+       
+        const typhoonSurfaceY = baseCenterY + flow + move - amp;
+
+        // 2. 잠수함 Y 목표값 설정
+        // - 수면(typhoonSurfaceY)보다 위로 올라가지 못하게 함 (Math.max 사용: Y값은 아래로 갈수록 큼)
+        // - 바닥(height)을 뚫고 나가지 못하게 함 (Math.min 사용)
+        // - 그 사이(물 속)라면 마우스 Y 좌표(mouseYCanvas)를 그대로 따라감
+        
+        const bottomLimit = height - 30; // 바닥 여유공간
+        
+        targetSubX = mouseXCanvas;
+        targetSubY = Math.max(typhoonSurfaceY, Math.min(mouseYCanvas, bottomLimit));
+
+        // 방향 전환
+        if (mouseXCanvas > subX + 5) isFacingRight = true;
+        if (mouseXCanvas < subX - 5) isFacingRight = false;
+
+        // 툴팁 업데이트
+        const date = dateScale.invert(mouseXCanvas);
+        let status = "";
+        let statusColor = "#b0e0e6";
+
+        if(p.rawTemp > 0.8) { status = "🔥 Heatwave"; statusColor = "#FF7F50"; }
+        else if(p.rawTemp < -0.2) { status = "❄️ Cold Wave"; statusColor = "#4B0082"; }
+        if(p.rawPrecip > 1.2) {
+             status += (status ? " & " : "") + "☔ Heavy Rain";
+             if(statusColor === "#b0e0e6") statusColor = "#7fffd4";
+        }
+        if(status === "") status = "Normal";
+
+        tooltip.innerHTML = `
+            <div style="font-size:11px; color:#87CEEB; opacity:0.8;">${date.getFullYear()}</div>
+            <div style="font-size:16px; color:#fff;">${date.getMonth() + 1}월</div>
+            <div style="margin-top:4px; font-size:13px; font-weight:bold; color:${statusColor}; text-shadow: 0 0 5px ${statusColor}40;">${status}</div>
+        `;
+        
+        tooltip.style.left = mouseXCanvas + "px";
+        tooltip.style.top = (mouseYCanvas - 30) + "px"; 
+        tooltip.style.opacity = 1;
+    });
+
+    wrapper.addEventListener("mouseleave", function() {
+        isHovered = false;
+        tooltip.style.opacity = 0;
+    });
+
+    window.addEventListener("mouseout", function(e) {
+        if (e.relatedTarget === null) {
+             isHovered = false;
+             tooltip.style.opacity = 0;
+        }
+    });
+
+</script>
+
 </body>
+
 </html>
