@@ -1,580 +1,740 @@
 <!DOCTYPE html>
-
 <html lang="ko">
-
 <head>
-
     <meta charset="UTF-8">
-
-    <title>Weather Wave - Auto Hide Submarine</title>
-
+    <title>Integrated Analytics - Tooltip Fixed</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-
         body {
-
             margin: 0;
-
             background: linear-gradient(to bottom, #001f3f, #000810);
-
             font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
-
             height: 100vh;
-
             overflow: hidden;
-
             color: #b0e0e6;
-
-            cursor: default; /* 기본 커서는 보이게 하되, 캔버스 위에서는 숨김 */
-
+            user-select: none;
         }
 
-        
-
+        /* --- UI Layer --- */
         #ui-layer {
-
-            position: fixed;
-
-            top: 20px;
-
-            left: 0;
-
-            width: 100%;
-
-            display: flex;
-
-            flex-direction: column;
-
-            align-items: center;
-
-            z-index: 100;
-
-            pointer-events: none;
-
+            position: fixed; top: 20px; left: 0; width: 100%;
+            display: flex; flex-direction: column; align-items: center;
+            z-index: 100; pointer-events: none; 
         }
-
-
 
         h1 {
-
-            font-size: 24px;
-
-            margin: 0 0 10px 0;
-
-            letter-spacing: 4px;
-
-            text-transform: uppercase;
-
-            font-weight: 300;
-
-            text-shadow: 0 0 15px rgba(0, 191, 255, 0.6);
-
+            font-size: 24px; margin: 0 0 10px 0;
+            letter-spacing: 4px; text-transform: uppercase; font-weight: 300;
+            color: #fff; text-shadow: 0 0 15px rgba(0, 191, 255, 0.6);
+            transition: text-shadow 0.3s, color 0.3s;
         }
 
-
-
-        .legend {
-
-            display: flex;
-
-            gap: 25px;
-
-            font-size: 12px;
-
-            color: #87CEEB;
-
-            font-weight: 500;
-
-            pointer-events: auto;
-
+        .btn-group {
+            display: flex; gap: 10px; pointer-events: auto; margin-bottom: 15px;
         }
 
+        button {
+            padding: 8px 16px; 
+            background: rgba(20, 20, 30, 0.6); 
+            border: 1px solid #555; 
+            color: #777; 
+            border-radius: 20px;
+            cursor: pointer; font-family: inherit; font-size: 13px;
+            transition: all 0.2s ease; backdrop-filter: blur(4px);
+            opacity: 0.7;
+        }
+        
+        button:hover { opacity: 1; border-color: #aaa; }
+
+        button.active {
+            opacity: 1; font-weight: bold; border-color: transparent; color: #001f3f;
+        }
+        
+        #btn-weather.active { background: #00ced1; box-shadow: 0 0 15px #00ced1; }
+        #btn-cabbage.active { background: #00ff7f; box-shadow: 0 0 15px #00ff7f; }
+        #btn-wave.active { background: #00bfff; color: #fff; box-shadow: 0 0 15px #00bfff; }
+        #btn-inflation.active { background: #ff4500; color: white; box-shadow: 0 0 15px #ff4500; }
+
+        .legend-wrapper {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 5px; pointer-events: auto; min-height: 20px;
+        }
+        .legend-container {
+            display: flex; gap: 15px; font-size: 11px; color: #87CEEB;
+            font-weight: 500; align-items: center; height: 20px; transition: opacity 0.3s;
+        }
         .legend-item { display: flex; align-items: center; }
-
         .box {
-
-            width: 12px; height: 12px; border-radius: 50%;
-
-            margin-right: 8px; box-shadow: 0 0 5px currentColor;
-
+            width: 10px; height: 10px; border-radius: 50%;
+            margin-right: 6px; box-shadow: 0 0 5px currentColor;
+        }
+        .legend-spectrum {
+            width: 80px; height: 6px; border-radius: 3px;
+            background: linear-gradient(to right, hsla(120, 80%, 80%, 0.7), hsla(120, 100%, 20%, 0.7));
+            margin: 0 6px;
         }
 
+        /* --- View Containers --- */
+        .view-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            transition: opacity 0.3s ease; 
+            pointer-events: none; 
+        }
+        .visible-view { opacity: 1; }
+        .hidden-view { opacity: 0; }
 
+        /* Layer Priority */
+        #weather-view { z-index: 1; }   /* 1층 */
+        #wave-view    { z-index: 2; }   /* 2층 */
+        #cabbage-view { z-index: 3; }   /* 3층 */
+        #inflation-view { z-index: 4; } /* 4층 */
+        
+        canvas { pointer-events: auto; }
 
+        /* Scroll Wrapper */
         #scroll-wrapper {
-
-            width: 100vw;
-
-            height: 100vh;
-
-            overflow-x: auto;
-
-            overflow-y: hidden;
-
+            width: 100vw; height: 100vh;
+            overflow-x: auto; overflow-y: hidden;
             scrollbar-width: none; 
-
-            -ms-overflow-style: none;
-
-            display: flex;
-
-            align-items: center;
-
-            cursor: none; /* 그래프 영역 위에서는 커서 숨김 */
-
+            display: flex; align-items: flex-end; 
         }
-
         #scroll-wrapper::-webkit-scrollbar { display: none; }
-
-
-
-        #chart-container {
-
-            position: relative;
-
-            height: 600px;
-
-            flex-shrink: 0;
-
-        }
-
-
-
-        canvas {
-
-            display: block;
-
-        }
-
-
-
+        #weather-chart-container { position: relative; height: 600px; flex-shrink: 0; }
+        
+        /* [수정] 툴팁을 body로 빼냈으므로 fixed 포지션 사용 */
         #tooltip {
-
-            position: absolute;
-
-            background: rgba(0, 20, 40, 0.9);
-
-            color: #fff;
-
-            padding: 10px 18px;
-
-            border-radius: 12px;
-
-            font-size: 13px;
-
-            pointer-events: none;
-
-            opacity: 0;
-
-            transition: opacity 0.1s ease;
-
-            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-
-            border: 1px solid #0077be;
-
-            z-index: 200;
-
-            white-space: nowrap;
-
-            transform: translate(-50%, -140%);
-
-            backdrop-filter: blur(5px);
-
+            position: fixed; /* absolute -> fixed */
+            background: rgba(0, 10, 20, 0.90); color: #fff;
+            padding: 12px 16px; border-radius: 12px; font-size: 12px;
+            pointer-events: none; opacity: 0; transition: opacity 0.1s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
+            z-index: 9999; /* 최상단 */
+            white-space: nowrap; transform: translate(-50%, -130%);
+            backdrop-filter: blur(8px);
+            line-height: 1.8;
         }
+
+        /* Layouts */
+        #cabbage-viewport, #inflation-viewport, #wave-viewport {
+            width: 100%; height: 100%; 
+            position: absolute; top: 0; left: 0;
+            overflow: hidden; display: flex; align-items: flex-end; 
+        }
+        
+        #cabbage-viewport { transition: height 0.5s ease; bottom: 0; top: auto; }
+        #cabbage-viewport.merged-mode { height: 35%; } 
+        
+        #cabbage-chart-inner { position: absolute; height: 100%; width: 4400px; bottom: 0; will-change: transform; }
+        #inflation-chart-inner { height: 600px; width: 4400px; position: relative; flex-shrink: 0; will-change: transform; }
+        #wave-chart-inner { height: 600px; width: 4400px; position: relative; flex-shrink: 0; will-change: transform; }
 
     </style>
-
 </head>
-
 <body>
 
-
-
     <div id="ui-layer">
-
-        <h1>Weather Wave</h1>
-
-        <div class="legend">
-
-            <div class="legend-item"><div class="box" style="background:radial-gradient(circle, #FF7F50, #006994); color: #FF7F50;"></div>Temperature</div>
-
-            <div class="legend-item"><div class="box" style="background:linear-gradient(to right, #00ced1, #7fffd4); color: #00ced1;"></div>Precipitation</div>
-
-            <div class="legend-item"><div class="box" style="background:#000030; color: #000080;"></div>Typhoon</div>
-
+        <h1 id="main-title">Integrated Analytics</h1>
+        
+        <div class="btn-group">
+            <button id="btn-weather" class="active">Weather</button>
+            <button id="btn-cabbage">Harvest</button>
+            <button id="btn-wave">Price</button>
+            <button id="btn-inflation">Inflation</button>
         </div>
 
-        <div style="margin-top:10px; font-size: 11px; opacity: 0.6;">Scroll / Drag horizontally</div>
-
-    </div>
-
-
-
-    <div id="scroll-wrapper">
-
-        <div id="chart-container">
-
-            <div id="tooltip"></div>
-
+        <div class="legend-wrapper">
+            <div class="legend-container" id="weather-legend">
+                <div class="legend-item"><div class="box" style="background:radial-gradient(circle, #FF7F50, #006994); color: #FF7F50;"></div>Temp</div>
+                <div class="legend-item"><div class="box" style="background:linear-gradient(to right, #00ced1, #7fffd4); color: #00ced1;"></div>Rain</div>
+                <div class="legend-item"><div class="box" style="background:#000030; color: #000080;"></div>Typhoon</div>
+            </div>
+            <div class="legend-container" id="cabbage-legend" style="display: none;">
+                <div class="legend-item">Low</div>
+                <div class="legend-spectrum"></div>
+                <div class="legend-item">High</div>
+            </div>
+            <div class="legend-container" id="wave-legend" style="display: none;">
+                <div class="legend-item"><div class="box" style="background: #00bfff; box-shadow: 0 0 5px #00bfff;"></div>Price Index</div>
+            </div>
+            <div class="legend-container" id="inflation-legend" style="display: none;">
+                <div class="legend-item"><div class="box" style="background: #FF3333;"></div>High Perc.</div>
+                <div class="legend-item"><div class="box" style="background: #00BFFF;"></div>Stable</div>
+            </div>
         </div>
-
     </div>
 
+    <div id="tooltip"></div>
 
+    <div id="weather-view" class="view-container visible-view">
+        <div id="scroll-wrapper">
+            <div id="weather-chart-container"></div>
+        </div>
+    </div>
+
+    <div id="cabbage-view" class="view-container hidden-view">
+        <div id="cabbage-viewport">
+            <div id="cabbage-chart-inner">
+                <canvas id="cabbageChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="wave-view" class="view-container hidden-view">
+        <div id="wave-viewport">
+            <div id="wave-chart-inner">
+                <canvas id="waveChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="inflation-view" class="view-container hidden-view">
+        <div id="inflation-viewport">
+            <div id="inflation-chart-inner">
+                 <canvas id="inflationChart"></canvas>
+            </div>
+        </div>
+    </div>
 
 <script>
-    // 1. 설정
-    const paddingX = 200; 
-    const effectiveWidth = 4000; 
-    const totalWidth = effectiveWidth + (paddingX * 2);
+    // === CONFIG ===
+    const PADDING_X = 200;      
+    const EFFECTIVE_WIDTH = 4000; 
+    const TOTAL_WIDTH = EFFECTIVE_WIDTH + (PADDING_X * 2); 
+    const HEIGHT = 600;
+
+    // === STATE ===
+    const activeLayers = {
+        weather: true,
+        cabbage: false,
+        wave: false, 
+        inflation: false
+    };
+
+    // === ELEMENTS ===
+    const uiTitle = document.getElementById('main-title');
+    const btns = {
+        weather: document.getElementById('btn-weather'),
+        cabbage: document.getElementById('btn-cabbage'),
+        wave: document.getElementById('btn-wave'),
+        inflation: document.getElementById('btn-inflation')
+    };
     
-    const height = 600;
-    const container = d3.select("#chart-container");
-    const wrapper = document.getElementById("scroll-wrapper");
-    
-    container.style("width", totalWidth + "px");
+    const views = {
+        weather: document.getElementById('weather-view'),
+        cabbage: document.getElementById('cabbage-view'),
+        wave: document.getElementById('wave-view'),
+        inflation: document.getElementById('inflation-view')
+    };
 
-    const canvas = container.append("canvas")
-        .attr("width", totalWidth)
-        .attr("height", height);
-    const context = canvas.node().getContext("2d");
+    const legends = {
+        weather: document.getElementById('weather-legend'),
+        cabbage: document.getElementById('cabbage-legend'),
+        wave: document.getElementById('wave-legend'),
+        inflation: document.getElementById('inflation-legend')
+    };
 
-    let mouseXCanvas = -1000;
-    let mouseYCanvas = -1000;
-    let isHovered = false;
-    let globalTime = Date.now() / 300; // 애니메이션 시간 동기화용
+    const cabbageViewport = document.getElementById('cabbage-viewport');
+    const weatherWrapper = document.getElementById("scroll-wrapper");
+    const cabbageInner = document.getElementById('cabbage-chart-inner');
+    const waveInner = document.getElementById('wave-chart-inner');
+    const inflationInner = document.getElementById('inflation-chart-inner');
 
-    // 잠수함 이미지
-    const subImg = new Image();
-    subImg.src = "submarine.png"; 
+    // === TOGGLE LOGIC ===
+    function toggleLayer(layer) {
+        activeLayers[layer] = !activeLayers[layer];
+        updateVisibility();
+    }
 
-    let subX = -100; 
-    let subY = -100;
-    let targetSubX = -100; 
-    let targetSubY = -100;
-    let isFacingRight = true; 
+    function updateVisibility() {
+        Object.keys(activeLayers).forEach(key => {
+            if (activeLayers[key]) {
+                btns[key].classList.add('active');
+                views[key].classList.remove('hidden-view');
+                views[key].classList.add('visible-view');
+            } else {
+                btns[key].classList.remove('active');
+                views[key].classList.remove('visible-view');
+                views[key].classList.add('hidden-view');
+            }
+        });
 
+        const activeCount = Object.values(activeLayers).filter(v => v).length;
+        const isMerged = activeCount > 1;
+
+        if (activeLayers.cabbage && (activeLayers.weather || activeLayers.inflation || activeLayers.wave)) {
+            cabbageViewport.classList.add('merged-mode');
+        } else {
+            cabbageViewport.classList.remove('merged-mode');
+        }
+
+        if (isMerged) {
+            Object.values(legends).forEach(l => l.style.display = 'none');
+            uiTitle.innerText = "Combined View";
+            uiTitle.style.textShadow = "0 0 15px rgba(255, 255, 255, 0.5)";
+        } else {
+            Object.keys(legends).forEach(key => {
+                legends[key].style.display = activeLayers[key] ? 'flex' : 'none';
+            });
+            
+            if (activeLayers.weather) { uiTitle.innerText = "Weather Wave"; uiTitle.style.textShadow = "0 0 15px rgba(0, 191, 255, 0.6)"; }
+            else if (activeLayers.cabbage) { uiTitle.innerText = "Monthly Harvest"; uiTitle.style.textShadow = "0 0 15px rgba(0, 255, 127, 0.6)"; }
+            else if (activeLayers.wave) { uiTitle.innerText = "Price Index"; uiTitle.style.textShadow = "0 0 15px rgba(0, 191, 255, 0.6)"; }
+            else if (activeLayers.inflation) { uiTitle.innerText = "Perception Bubbles"; uiTitle.style.textShadow = "0 0 15px rgba(255, 69, 0, 0.6)"; }
+            else { uiTitle.innerText = "Select Data"; uiTitle.style.textShadow = "none"; }
+        }
+    }
+
+    btns.weather.addEventListener('click', () => toggleLayer('weather'));
+    btns.cabbage.addEventListener('click', () => toggleLayer('cabbage'));
+    btns.wave.addEventListener('click', () => toggleLayer('wave'));
+    btns.inflation.addEventListener('click', () => toggleLayer('inflation'));
+
+
+    // =========================================================
+    // 1. DATA & GRAPH SETUP
+    // =========================================================
     let targetScroll = 0;
     let currentScroll = 0;
-    const verticalOffset = 50; 
-    const baseCenterY = height / 2 + verticalOffset; 
+    let globalTime = 0;
 
-    // 2. 데이터 생성
-    const steps = 800; 
-    const points = [];
+    // --- Weather Setup ---
+    const weatherContainer = d3.select("#weather-chart-container");
+    weatherContainer.style("width", TOTAL_WIDTH + "px");
+    const weatherCanvas = weatherContainer.append("canvas").attr("width", TOTAL_WIDTH).attr("height", HEIGHT);
+    const ctxWeather = weatherCanvas.node().getContext("2d", { alpha: true });
     
-    function gaussian(x, center, sigma, amplitude) {
-        return amplitude * Math.exp(-Math.pow(x - center, 2) / (2 * Math.pow(sigma, 2)));
-    }
-
+    // Weather Data
+    const steps = 800; const points = [];
+    function gaussian(x, center, sigma, amplitude) { return amplitude * Math.exp(-Math.pow(x - center, 2) / (2 * Math.pow(sigma, 2))); }
     for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const timeValue = t * 60; 
-        
-        const baseFlow = Math.sin(t * Math.PI * 10) * 15;
-
-        // (1) 기온
-        let tempVal = Math.sin((timeValue - 4) * (Math.PI * 2 / 12)) * 1.5; 
-        tempVal += gaussian(t, 0.52, 0.03, 1.2);
-        tempVal -= gaussian(t, 0.22, 0.03, 1.2);
-        
-        // (2) 강수량
-        let precipVal = Math.sin((timeValue - 7) * (Math.PI * 2 / 12)) * 1.0; 
-        precipVal = (precipVal + 1.2) * 0.5;
-        precipVal += gaussian(t, 0.72, 0.04, 1.5);
-
-        // (3) 태풍
+        const t = i / steps; const baseFlow = Math.sin(t * Math.PI * 10) * 15;
+        let tempVal = Math.sin((t * 60 - 4) * (Math.PI * 2 / 12)) * 1.5; 
+        tempVal += gaussian(t, 0.52, 0.03, 1.2); tempVal -= gaussian(t, 0.22, 0.03, 1.2);
+        let precipVal = Math.sin((t * 60 - 7) * (Math.PI * 2 / 12)) * 1.0; 
+        precipVal = (precipVal + 1.2) * 0.5; precipVal += gaussian(t, 0.72, 0.04, 1.5);
         let typhoonVal = 0.2; 
         for(let y=0; y<5; y++) {
-            const typhoonPeak = (y * 12 + 8.5) / 60;
-            let intensity = 0.5 + Math.random() * 0.5;
-            if(y === 2) intensity = 1.2; 
-            typhoonVal += gaussian(t, typhoonPeak, 0.015, intensity);
+            let intensity = 0.5 + Math.random() * 0.5; if(y === 2) intensity = 1.2; 
+            typhoonVal += gaussian(t, (y * 12 + 8.5) / 60, 0.015, intensity);
         }
-
-        points.push({
-            t: t,
-            x: paddingX + (t * effectiveWidth), 
-            baseFlow: baseFlow,
-            tempAmp: (tempVal + 2.5) * 60, 
-            precipAmp: precipVal * 90, 
-            typhoonAmp: typhoonVal * 60,
-            rawTemp: tempVal, 
-            rawPrecip: precipVal
-        });
+        points.push({ t: t, x: PADDING_X + (t * EFFECTIVE_WIDTH), baseFlow: baseFlow, tempAmp: (tempVal + 2.5) * 60, precipAmp: precipVal * 90, typhoonAmp: typhoonVal * 60, rawTemp: tempVal, rawPrecip: precipVal });
     }
-
-    // 3. 색상 설정
     const colorRain = d3.scaleSequential(d3.interpolateRgb("#00ced1", "#7fffd4")).domain([0.8, 2.0]);
     const defaultTempColor = "#006994"; 
+    const baseCenterY = HEIGHT / 2 + 50;
+    const subImg = new Image(); subImg.src = "submarine.png"; 
+    let subX = -100; let subY = -100; let targetSubX = -100; let targetSubY = -100; let isFacingRight = true; 
 
-    // 4. 그리기 함수
-    function drawLayer(keyAmp, offsetFunc, colorCallback, blendMode, baseOpacity) {
-        context.save();
-        const lensRadius = 250; 
+    // --- Cabbage Setup ---
+    cabbageInner.style.width = TOTAL_WIDTH + "px";
+    let cabbageTime = 0;
+    const cabbageDataObj = (() => {
+        const labels = []; const data = [];
+        for (let year = 2020; year <= 2024; year++) {
+            for (let month = 1; month <= 12; month++) { labels.push({ year, month }); data.push(Math.floor(Math.random() * 400) + 100 + (month > 10 ? 300 : 0)); }
+        }
+        return { labels, data };
+    })();
+    const dataValues = cabbageDataObj.data;
+    const minDataVal = Math.min(...dataValues); const maxDataVal = Math.max(...dataValues);
 
-        const areaGen = d3.area()
-            .x(d => d.x)
-            .y0(height) // 바닥까지 채움
-            .y1(d => {
-                let scale = 0.35; 
-                let flowScale = 0.35;
-
-                // 렌즈 효과
-                if (isHovered) {
-                    const dist = Math.abs(d.x - mouseXCanvas);
-                    if (dist < lensRadius) {
-                        const expansion = Math.exp(-(dist * dist) / (2 * (lensRadius/2.5) ** 2));
-                        scale += expansion * 0.65;
-                        flowScale += expansion * 0.65;
-                    }
+    const seaweedPlugin = {
+        id: 'seaweedGraph',
+        afterDatasetsDraw: (chart) => {
+            if (!activeLayers.cabbage) return;
+            const ctx = chart.ctx; const meta = chart.getDatasetMeta(0); const yAxis = chart.scales.y;
+            cabbageTime += 0.03; ctx.save();
+            meta.data.forEach((bar, index) => {
+                const centerX = PADDING_X + (index / (meta.data.length - 1)) * EFFECTIVE_WIDTH;
+                if (centerX < currentScroll - 100 || centerX > currentScroll + window.innerWidth + 100) return;
+                const bottomY = yAxis.getPixelForValue(0); const topY = bar.y;
+                const gradient = ctx.createLinearGradient(centerX, bottomY, centerX, topY);
+                gradient.addColorStop(0, `hsla(120, 90%, 40%, 0.85)`); 
+                gradient.addColorStop(1, `hsla(120, 90%, 75%, 0.5)`); 
+                ctx.fillStyle = gradient; ctx.beginPath();
+                const width = 20;
+                for (let y = bottomY; y >= topY; y -= 5) {
+                    const sway = Math.sin(y * 0.015 + cabbageTime * 0.7 + index * 0.5) * ((bottomY - y) / (bottomY - topY) * 6);
+                    ctx.lineTo(centerX - width/2 + sway, y);
                 }
-                
-                const amp = 15 + d[keyAmp] * scale;
-                const flow = d.baseFlow * flowScale;
-                const move = (offsetFunc ? offsetFunc(d, globalTime) : 0);
-                
-                return baseCenterY + flow + move - amp;
-            })
-            .curve(d3.curveBasis)
-            .context(context);
-
-        context.beginPath();
-        areaGen(points);
-        context.clip();
-
-        if (keyAmp === 'tempAmp') {
-            context.fillStyle = defaultTempColor;
-        } else if (colorCallback) {
-            const gradient = context.createLinearGradient(paddingX, 0, paddingX + effectiveWidth, 0);
-            points.forEach(p => {
-                gradient.addColorStop(p.t, colorCallback(p));
+                ctx.quadraticCurveTo(centerX + Math.sin(topY*0.015+cabbageTime*0.7+index*0.5)*6, topY-10, centerX + width/2 + Math.sin(topY*0.015+cabbageTime*0.7+index*0.5)*6, topY);
+                for (let y = topY; y <= bottomY; y += 5) {
+                    const sway = Math.sin(y * 0.015 + cabbageTime * 0.7 + index * 0.5) * ((bottomY - y) / (bottomY - topY) * 6);
+                    ctx.lineTo(centerX + width/2 + sway, y);
+                }
+                ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = `hsla(120, 100%, 80%, 0.4)`; ctx.lineWidth = 1; ctx.stroke();
             });
-            context.fillStyle = gradient;
-        } else {
-            context.fillStyle = '#000030'; 
+            ctx.restore();
         }
+    };
 
-        context.globalCompositeOperation = blendMode || 'source-over';
-        context.globalAlpha = baseOpacity;
-        context.fillRect(0, 0, totalWidth, height);
-        context.restore();
+    const ctxCabbage = document.getElementById('cabbageChart').getContext('2d');
+    const myCabbageChart = new Chart(ctxCabbage, {
+        type: 'bar',
+        data: { labels: cabbageDataObj.labels, datasets: [{ data: cabbageDataObj.data, backgroundColor: 'transparent', borderColor: 'transparent' }] },
+        plugins: [seaweedPlugin],
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            layout: { padding: { bottom: 60, top: 50 } },
+            plugins: { legend: { display: false }, tooltip: { enabled: false } }, 
+            scales: { x: { display: false }, y: { display: false, beginAtZero: true } }
+        }
+    });
+
+    const customAxisPlugin = {
+        id: 'customAxis',
+        afterDraw: (chart) => {
+            // Priority: Weather > Wave > Inflation > Cabbage
+            if (activeLayers.weather || activeLayers.wave || activeLayers.inflation) return;
+            if (!activeLayers.cabbage) return;
+            const ctx = chart.ctx; const height = chart.height;
+            ctx.save(); ctx.textAlign = "center"; ctx.shadowColor = "rgba(255, 255, 255, 0.8)"; ctx.shadowBlur = 8;
+            chart.data.labels.forEach((labelObj, index) => {
+                const x = PADDING_X + (index / (chart.data.labels.length - 1)) * EFFECTIVE_WIDTH;
+                if (x < currentScroll - 100 || x > currentScroll + window.innerWidth + 100) return;
+                const monthStr = String(labelObj.month).padStart(2,'0');
+                if (labelObj.month === 1) {
+                    ctx.font = "bold 13px sans-serif"; ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.fillText(labelObj.year, x, height - 35);
+                    ctx.font = "bold 16px sans-serif"; ctx.fillStyle = "rgba(255,255,255,1)"; ctx.fillText(monthStr, x, height - 15);
+                } else {
+                    ctx.font = "12px sans-serif"; ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.fillText(monthStr, x, height - 15);
+                }
+            });
+            ctx.restore();
+        }
+    };
+    Chart.register(customAxisPlugin);
+
+    // --- Wave Setup ---
+    waveInner.style.width = TOTAL_WIDTH + "px";
+    const waveCanvas = document.getElementById('waveChart');
+    waveCanvas.width = TOTAL_WIDTH; waveCanvas.height = HEIGHT;
+    const ctxWave = waveCanvas.getContext("2d", { alpha: true });
+
+    const rawWaveData = [
+        { v: 1.5 }, { v: 1.0 }, { v: 0.6 }, { v: 0.1 }, { v: -0.3 }, { v: 0.0 }, { v: 0.4 }, { v: 0.7 }, { v: 0.6 }, { v: 0.6 }, { v: 0.5 }, { v: 0.5 },
+        { v: 0.6 }, { v: 1.2 }, { v: 1.7 }, { v: 2.3 }, { v: 2.4 }, { v: 2.6 }, { v: 2.7 }, { v: 2.9 }, { v: 3.1 }, { v: 3.2 }, { v: 3.7 }, { v: 3.7 },
+        { v: 3.6 }, { v: 3.9 }, { v: 4.1 }, { v: 4.8 }, { v: 5.4 }, { v: 6.0 }, { v: 6.3 }, { v: 5.7 }, { v: 5.5 }, { v: 5.3 }, { v: 5.2 }, { v: 5.0 },
+        { v: 5.2 }, { v: 4.7 }, { v: 4.2 }, { v: 3.7 }, { v: 3.2 }, { v: 2.8 }, { v: 2.3 }, { v: 2.8 }, { v: 3.3 }, { v: 3.8 }, { v: 3.3 }, { v: 3.2 },
+        { v: 2.8 }, { v: 3.1 }, { v: 3.1 }, { v: 2.9 }, { v: 2.7 }, { v: 2.4 }, { v: 2.6 }, { v: 2.0 }, { v: 1.6 }, { v: 1.3 }, { v: 1.5 }, { v: 1.9 }
+    ];
+    const wavePoints = rawWaveData.map((d, i) => ({
+        x: PADDING_X + (i / 59) * EFFECTIVE_WIDTH,
+        y: 0, 
+        value: d.v,
+        year: 2020 + Math.floor(i/12),
+        month: (i % 12) + 1
+    }));
+
+    const yScaleWave = d3.scaleLinear().domain([-1, 7]).range([0, -350]); 
+    const colorScaleWave = d3.scaleSequential(d3.interpolateCool).domain([-1, 7]);
+    const waveCenterY = HEIGHT * 0.65;
+
+    const lineGenerator = d3.line().x(d => d.x).y(d => waveCenterY + yScaleWave(d.value)).curve(d3.curveCatmullRom.alpha(0.5)).context(ctxWave);
+
+    // --- Inflation Setup ---
+    inflationInner.style.width = TOTAL_WIDTH + "px";
+    const inflationCanvas = document.getElementById('inflationChart');
+    inflationCanvas.width = TOTAL_WIDTH; inflationCanvas.height = HEIGHT;
+    const ctxInflation = inflationCanvas.getContext('2d', { alpha: true });
+
+    const inflationPoints = [];
+    for (let i = 0; i < 60; i++) {
+        const progress = i / 59;
+        const x = PADDING_X + (progress * EFFECTIVE_WIDTH);
+        const date = new Date(2020, i, 1);
+        let inflation = 1.0 + (progress * 6.0) + (Math.random() * 4.0 - 2.0);
+        if (i > 10 && i < 20) inflation -= 2.0; if (i > 35 && i < 45) inflation += 2.5;
+        inflation = Math.max(0, inflation);
+        let count = 100 + Math.random() * 800 + (inflation * 50);
+        inflationPoints.push({ x, inflation, count, date, phase: Math.random() * Math.PI * 2, speed: 0.02 + Math.random() * 0.03, floatAmp: 5 + Math.random() * 10 });
     }
+    const yScaleInf = d3.scaleLinear().domain([0, 12]).range([HEIGHT - 80, 80]);
+    const colorScaleInf = d3.scaleSequential(d3.interpolateRgb("#00BFFF", "#FF3333")).domain([1, 9]);
+    const rScaleInf = d3.scaleSqrt().domain([0, 1500]).range([5, 60]);
+    inflationPoints.forEach(p => { p.y = yScaleInf(p.inflation); p.color = colorScaleInf(p.inflation); p.radius = rScaleInf(p.count); });
 
-    // 잠수함 그리기
-    function drawSubmarine() {
-        if (!subImg.complete || subImg.naturalWidth === 0) return;
 
-        context.save();
-        
-        // 반응 속도 (조금 더 부드럽게)
-        subX += (targetSubX - subX) * 0.15;
-        subY += (targetSubY - subY) * 0.15;
+    // =========================================================
+    // 2. MASTER RENDER LOOP
+    // =========================================================
+    let mouseXCanvas = -1000; let mouseYCanvas = -1000; let isHovered = false;
 
-        const subWidth = 100;
-        const subHeight = subWidth * (subImg.height / subImg.width);
+    function masterLoop() {
+        globalTime = Date.now() / 300;
 
-        let dataRatio = (subX - paddingX) / effectiveWidth;
-        dataRatio = Math.max(0, Math.min(1, dataRatio));
-        const idx = Math.floor(dataRatio * steps);
-        const p = points[idx] || points[points.length-1];
+        const diff = targetScroll - currentScroll;
+        if (Math.abs(diff) > 0.5) currentScroll += diff * 0.05;
+        else currentScroll = targetScroll;
 
-        // 조명 색상
-        let lightColorStart = 'rgba(255, 255, 200, 0.6)'; 
-        if (p && p.rawTemp > 0.8) {
-            lightColorStart = 'rgba(255, 69, 0, 0.7)'; 
-        } else if (p && p.rawTemp < -0.2) {
-            lightColorStart = 'rgba(138, 43, 226, 0.7)'; 
-        } else {
-            lightColorStart = 'rgba(224, 255, 255, 0.5)'; 
-        }
+        weatherWrapper.scrollLeft = currentScroll;
+        cabbageInner.style.transform = `translate3d(${-currentScroll}px, 0, 0)`;
+        inflationInner.style.transform = `translate3d(${-currentScroll}px, 0, 0)`;
+        waveInner.style.transform = `translate3d(${-currentScroll}px, 0, 0)`;
 
-        context.translate(subX, subY);
+        const visibleMin = currentScroll - 100;
+        const visibleMax = currentScroll + window.innerWidth + 100;
+        const isMerged = Object.values(activeLayers).filter(v => v).length > 1;
 
-        if (!isFacingRight) {
-            context.scale(-1, 1);
-        }
+        // --- Weather Render ---
+        ctxWeather.clearRect(0, 0, TOTAL_WIDTH, HEIGHT);
+        if (activeLayers.weather) {
+            const drawWLayer = (keyAmp, offsetFunc, colorCallback, blendMode, baseOpacity) => {
+                ctxWeather.save(); const lensRadius = 250; 
+                const areaGen = d3.area().x(d => d.x).y0(HEIGHT).y1(d => {
+                    let scale = 0.35; let flowScale = 0.35;
+                    if (isHovered) {
+                        const dist = Math.abs(d.x - mouseXCanvas);
+                        if (dist < lensRadius) {
+                            const expansion = Math.exp(-(dist * dist) / (2 * (lensRadius/2.5) ** 2));
+                            scale += expansion * 0.65; flowScale += expansion * 0.65;
+                        }
+                    }
+                    return baseCenterY + d.baseFlow * flowScale + (offsetFunc ? offsetFunc(d, globalTime) : 0) - (15 + d[keyAmp] * scale);
+                }).curve(d3.curveBasis).context(ctxWeather);
+                ctxWeather.beginPath(); areaGen(points); ctxWeather.clip();
+                if (keyAmp === 'tempAmp') ctxWeather.fillStyle = defaultTempColor;
+                else if (colorCallback) {
+                    const gradient = ctxWeather.createLinearGradient(PADDING_X, 0, PADDING_X + EFFECTIVE_WIDTH, 0);
+                    points.forEach(p => gradient.addColorStop(p.t, colorCallback(p))); ctxWeather.fillStyle = gradient;
+                } else ctxWeather.fillStyle = '#000030'; 
+                ctxWeather.globalCompositeOperation = blendMode || 'source-over';
+                ctxWeather.globalAlpha = baseOpacity; ctxWeather.fillRect(0, 0, TOTAL_WIDTH, HEIGHT); ctxWeather.restore();
+            };
+            // [복구] Typhoon source-over
+            drawWLayer('typhoonAmp', (d, time) => Math.sin(d.t * 5 + time * 0.5) * 10, null, 'source-over', 0.6);
+            drawWLayer('precipAmp', (d, time) => Math.sin(d.t * 12 + time) * 5, (p) => p.rawPrecip > 1.0 ? colorRain(p.rawPrecip) : "#00ced1", 'multiply', 0.5);
+            drawWLayer('tempAmp', (d, time) => Math.sin(d.t * 15 - time * 1.5) * 3, null, 'hard-light', 0.7);
 
-        context.drawImage(subImg, -subWidth / 2, -subHeight / 2, subWidth, subHeight);
+            // Axis Priority 1
+            ctxWeather.save(); ctxWeather.textAlign = "center"; ctxWeather.shadowColor = "rgba(255, 255, 255, 0.8)"; ctxWeather.shadowBlur = 8;
+            ctxWeather.fillStyle = "rgba(255, 255, 255, 0.9)";
+            for (let m = 0; m < 60; m++) {
+                const x = PADDING_X + (m / 59) * EFFECTIVE_WIDTH;
+                if (x < visibleMin || x > visibleMax) continue;
+                const date = new Date(2020, m, 1);
+                const monthStr = String(date.getMonth() + 1).padStart(2,'0');
+                if (date.getMonth() === 0) {
+                    ctxWeather.font = "bold 13px sans-serif"; ctxWeather.fillStyle = "rgba(255, 255, 255, 0.7)"; ctxWeather.fillText(date.getFullYear(), x, HEIGHT - 35); 
+                    ctxWeather.font = "bold 16px sans-serif"; ctxWeather.fillStyle = "rgba(255, 255, 255, 1.0)"; ctxWeather.fillText(monthStr, x, HEIGHT - 15);
+                } else {
+                    ctxWeather.font = "12px sans-serif"; ctxWeather.fillStyle = "rgba(255, 255, 255, 0.5)"; ctxWeather.fillText(monthStr, x, HEIGHT - 15);
+                }
+            }
+            ctxWeather.restore();
 
-        // 조명 효과
-        context.globalCompositeOperation = 'screen';
-        const lightGrad = context.createRadialGradient(subWidth/2, 0, 5, subWidth/2 + 100, 0, 150);
-        lightGrad.addColorStop(0, lightColorStart);
-        lightGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        context.fillStyle = lightGrad;
-        context.beginPath();
-        context.moveTo(subWidth/3, -10);
-        context.lineTo(subWidth + 150, -60);
-        context.lineTo(subWidth + 150, 60);
-        context.lineTo(subWidth/3, 10);
-        context.fill();
-
-        context.restore();
-    }
-
-    function drawLabels() {
-        context.save();
-        context.textAlign = "center";
-        context.shadowColor = "rgba(255, 255, 255, 0.8)";
-        context.shadowBlur = 8;
-        context.fillStyle = "rgba(255, 255, 255, 0.9)";
-
-        const months = 60; 
-        
-        for (let m = 0; m < months; m++) {
-            const ratio = m / (months - 1);
-            const x = paddingX + ratio * effectiveWidth;
-            
-            const date = new Date(2020, m, 1);
-            const year = date.getFullYear();
-            const month = date.getMonth() + 1;
-            const monthStr = String(month).padStart(2,'0');
-
-            if (month === 1) {
-                context.font = "bold 13px 'Apple SD Gothic Neo', sans-serif";
-                context.fillStyle = "rgba(255, 255, 255, 0.7)"; 
-                context.fillText(year, x, height - 35); 
-                
-                context.font = "bold 16px 'Apple SD Gothic Neo', sans-serif";
-                context.fillStyle = "rgba(255, 255, 255, 1.0)"; 
-                context.fillText(monthStr, x, height - 15);
-            } else {
-                context.font = "12px 'Apple SD Gothic Neo', sans-serif";
-                context.fillStyle = "rgba(255, 255, 255, 0.5)"; 
-                context.fillText(monthStr, x, height - 15);
+            if (isHovered && subImg.complete && !isMerged) {
+                ctxWeather.save();
+                subX += (targetSubX - subX) * 0.15; subY += (targetSubY - subY) * 0.15;
+                const subW = 100; const subH = subW * (subImg.height / subImg.width);
+                let dataRatio = Math.max(0, Math.min(1, (subX - PADDING_X) / EFFECTIVE_WIDTH));
+                const pSub = points[Math.floor(dataRatio * steps)] || points[points.length-1];
+                let lightColorStart = 'rgba(224, 255, 255, 0.5)'; 
+                if (pSub && pSub.rawTemp > 0.8) lightColorStart = 'rgba(255, 69, 0, 0.7)'; 
+                else if (pSub && pSub.rawTemp < -0.2) lightColorStart = 'rgba(138, 43, 226, 0.7)'; 
+                ctxWeather.translate(subX, subY); if (!isFacingRight) ctxWeather.scale(-1, 1);
+                ctxWeather.drawImage(subImg, -subW / 2, -subH / 2, subW, subH);
+                ctxWeather.globalCompositeOperation = 'screen';
+                const lightGrad = ctxWeather.createRadialGradient(subW/2, 0, 5, subW/2 + 100, 0, 150);
+                lightGrad.addColorStop(0, lightColorStart); lightGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctxWeather.fillStyle = lightGrad; ctxWeather.beginPath(); ctxWeather.moveTo(subW/3, -10); ctxWeather.lineTo(subW + 150, -60);
+                ctxWeather.lineTo(subW + 150, 60); ctxWeather.lineTo(subW/3, 10); ctxWeather.fill();
+                ctxWeather.restore();
             }
         }
-        context.restore();
-    }
 
-    // 5. 메인 루프
-    function animate() {
-        globalTime = Date.now() / 300; // 시간 갱신
+        // --- Cabbage Render ---
+        if (activeLayers.cabbage) { myCabbageChart.draw(); }
 
-        currentScroll += (targetScroll - currentScroll) * 0.02;
-        wrapper.scrollLeft = currentScroll;
+        // --- Wave Render ---
+        ctxWave.clearRect(0, 0, TOTAL_WIDTH, HEIGHT);
+        if (activeLayers.wave) {
+            const zeroY = waveCenterY + yScaleWave(0);
+            ctxWave.beginPath(); ctxWave.moveTo(0, zeroY); ctxWave.lineTo(TOTAL_WIDTH, zeroY);
+            ctxWave.strokeStyle = "rgba(255, 255, 255, 0.1)"; ctxWave.lineWidth = 1; ctxWave.stroke();
 
-        context.clearRect(0, 0, totalWidth, height);
-        
-        drawLayer('typhoonAmp', (d, time) => Math.sin(d.t * 5 + time * 0.5) * 10, null, 'multiply', 0.6);
-        drawLayer('precipAmp', (d, time) => Math.sin(d.t * 12 + time) * 5, (p) => p.rawPrecip > 1.0 ? colorRain(p.rawPrecip) : "#00ced1", 'multiply', 0.5);
-        drawLayer('tempAmp', (d, time) => Math.sin(d.t * 15 - time * 1.5) * 3, null, 'hard-light', 0.7);
+            const gradient = ctxWave.createLinearGradient(0, 0, TOTAL_WIDTH, 0);
+            wavePoints.forEach(p => {
+                const t = (p.x - PADDING_X) / EFFECTIVE_WIDTH;
+                if(t>=0 && t<=1) gradient.addColorStop(t, colorScaleWave(p.value));
+            });
 
-        drawLabels();
+            ctxWave.save();
+            ctxWave.beginPath(); lineGenerator(wavePoints);
+            ctxWave.strokeStyle = gradient; ctxWave.lineWidth = 4; ctxWave.shadowColor = "#00ced1"; ctxWave.shadowBlur = 15; ctxWave.stroke();
+            ctxWave.restore();
 
-        if (isHovered) {
-            drawSubmarine();
+            wavePoints.forEach(p => {
+                if (p.x < visibleMin || p.x > visibleMax) return;
+                let radius = 3;
+                if (isHovered && activeLayers.wave) {
+                    const dist = Math.abs(p.x - mouseXCanvas);
+                    if (dist < 100) radius += (100 - dist) * 0.05;
+                }
+                ctxWave.beginPath(); ctxWave.arc(p.x, waveCenterY + yScaleWave(p.value), radius, 0, Math.PI * 2); ctxWave.fillStyle = "#fff"; ctxWave.fill();
+            });
+
+            // Axis Priority 2
+            if (!activeLayers.weather) {
+                ctxWave.save(); ctxWave.textAlign = "center"; ctxWave.shadowColor = "rgba(255, 255, 255, 0.8)"; ctxWave.shadowBlur = 8;
+                wavePoints.forEach(p => {
+                    if (p.x < visibleMin || p.x > visibleMax) return;
+                    const yDate = HEIGHT - 40;
+                    const monthStr = String(p.month).padStart(2,'0');
+                    if (p.month === 1) {
+                        ctxWave.font = "bold 13px sans-serif"; ctxWave.fillStyle = "rgba(255, 255, 255, 0.7)"; ctxWave.fillText(p.year, p.x, HEIGHT - 35); 
+                        ctxWave.font = "bold 16px sans-serif"; ctxWave.fillStyle = "rgba(255, 255, 255, 1.0)"; ctxWave.fillText(monthStr, p.x, HEIGHT - 15);
+                    } else {
+                        ctxWave.font = "12px sans-serif"; ctxWave.fillStyle = "rgba(255, 255, 255, 0.5)"; ctxWave.fillText(monthStr, p.x, HEIGHT - 15);
+                    }
+                });
+                ctxWave.restore();
+            }
         }
 
-        requestAnimationFrame(animate);
+        // --- Inflation Render ---
+        ctxInflation.clearRect(0, 0, TOTAL_WIDTH, HEIGHT);
+        if (activeLayers.inflation) {
+            // Axis Priority 3
+            if (!activeLayers.weather && !activeLayers.wave) {
+                ctxInflation.save(); ctxInflation.textAlign = "center"; ctxInflation.shadowColor = "rgba(255, 255, 255, 0.8)"; ctxInflation.shadowBlur = 8;
+                inflationPoints.forEach(p => {
+                     if (p.x < visibleMin || p.x > visibleMax) return;
+                     const monthStr = String(p.date.getMonth()+1).padStart(2,'0');
+                     if (p.date.getMonth() === 0) {
+                         ctxInflation.font = "bold 13px sans-serif"; ctxInflation.fillStyle = "rgba(255,255,255,0.7)"; ctxInflation.fillText(p.date.getFullYear(), p.x, HEIGHT - 35);
+                         ctxInflation.font = "bold 16px sans-serif"; ctxInflation.fillStyle = "rgba(255,255,255,1)"; ctxInflation.fillText(monthStr, p.x, HEIGHT - 15);
+                     } else {
+                         ctxInflation.font = "12px sans-serif"; ctxInflation.fillStyle = "rgba(255,255,255,0.5)"; ctxInflation.fillText(monthStr, p.x, HEIGHT - 15);
+                     }
+                });
+                ctxInflation.restore();
+            }
+
+            ctxInflation.save();
+            inflationPoints.forEach(p => {
+                if (p.x < visibleMin || p.x > visibleMax) return;
+                const floatY = Math.sin(globalTime * p.speed + p.phase) * p.floatAmp;
+                const currentY = p.y + floatY;
+                ctxInflation.shadowBlur = 10; ctxInflation.shadowColor = p.color; ctxInflation.globalCompositeOperation = 'screen';
+                ctxInflation.beginPath(); ctxInflation.arc(p.x, currentY, p.radius, 0, Math.PI * 2);
+                ctxInflation.fillStyle = p.color; ctxInflation.globalAlpha = 0.8; ctxInflation.fill();
+                ctxInflation.strokeStyle = "#fff"; ctxInflation.lineWidth = 1.5; ctxInflation.globalAlpha = 0.6; ctxInflation.stroke();
+            });
+            ctxInflation.restore();
+        }
+
+        requestAnimationFrame(masterLoop);
     }
+    masterLoop(); 
 
-    animate();
 
-    // 6. 인터랙션
+    // === UNIFIED TOOLTIP FIX ===
     const tooltip = document.getElementById("tooltip");
-    const dateScale = d3.scaleTime()
-        .domain([new Date(2020,0,1), new Date(2024,11,31)])
-        .range([paddingX, paddingX + effectiveWidth]);
+    const dateScale = d3.scaleTime().domain([new Date(2020,0,1), new Date(2024,11,31)]).range([PADDING_X, PADDING_X + EFFECTIVE_WIDTH]);
 
     window.addEventListener("mousemove", function(event) {
         const winWidth = window.innerWidth;
         const mouseXScreen = event.clientX;
-        
         const ratio = Math.min(Math.max(mouseXScreen / winWidth, 0), 1);
-        const maxScroll = totalWidth - winWidth;
-        targetScroll = ratio * maxScroll;
+        const maxScroll = TOTAL_WIDTH - winWidth;
+        targetScroll = ratio * maxScroll; 
 
-        mouseXCanvas = wrapper.scrollLeft + mouseXScreen - wrapper.offsetLeft;
-        const rect = canvas.node().getBoundingClientRect();
-        mouseYCanvas = event.clientY - rect.top;
+        // [중요] 툴팁은 화면 상 마우스 위치(clientX)를 기준으로 표시
+        // 툴팁이 fixed 포지션이므로
+        const tooltipX = event.clientX;
+        const tooltipY = event.clientY - 30;
 
-        // 좌우 패딩 영역 밖이면 숨김
-        if (mouseXCanvas < paddingX || mouseXCanvas > totalWidth - paddingX) {
-            isHovered = false;
-            tooltip.style.opacity = 0;
-            return;
+        // 실제 캔버스 내부 논리적 X좌표 (스크롤 포함)
+        mouseXCanvas = currentScroll + mouseXScreen; 
+        
+        // 캔버스 Y좌표 (바닥 기준)
+        mouseYCanvas = event.clientY - (window.innerHeight - HEIGHT); 
+        if (mouseYCanvas < 0) mouseYCanvas = event.clientY; 
+
+        if (mouseXCanvas < PADDING_X || mouseXCanvas > TOTAL_WIDTH - PADDING_X) {
+            isHovered = false; tooltip.style.opacity = 0; return;
         }
-
         isHovered = true;
 
-        // --- 잠수함 위치 계산 로직 ---
-        let dataRatio = (mouseXCanvas - paddingX) / effectiveWidth;
-        dataRatio = Math.max(0, Math.min(1, dataRatio));
-        const idx = Math.floor(dataRatio * steps);
-        const p = points[idx] || points[points.length-1];
-
-        // 1. 태풍 그래프 수면(Surface) Y좌표 계산
-        const lensRadius = 250;
-        let scale = 0.35;
-        let flowScale = 0.35;
-        const dist = Math.abs(p.x - mouseXCanvas);
-        if (dist < lensRadius) {
-            const expansion = Math.exp(-(dist * dist) / (2 * (lensRadius/2.5) ** 2));
-            scale += expansion * 0.65;
-            flowScale += expansion * 0.65;
-        }
-
-        const flow = p.baseFlow * flowScale;
-        const move = Math.sin(p.t * 5 + globalTime * 0.5) * 10; 
-        const amp = 15 + p.typhoonAmp * scale;
-
-       
-        const typhoonSurfaceY = baseCenterY + flow + move - amp;
-
-        // 2. 잠수함 Y 목표값 설정
-        // - 수면(typhoonSurfaceY)보다 위로 올라가지 못하게 함 (Math.max 사용: Y값은 아래로 갈수록 큼)
-        // - 바닥(height)을 뚫고 나가지 못하게 함 (Math.min 사용)
-        // - 그 사이(물 속)라면 마우스 Y 좌표(mouseYCanvas)를 그대로 따라감
-        
-        const bottomLimit = height - 30; // 바닥 여유공간
-        
-        targetSubX = mouseXCanvas;
-        targetSubY = Math.max(typhoonSurfaceY, Math.min(mouseYCanvas, bottomLimit));
-
-        // 방향 전환
-        if (mouseXCanvas > subX + 5) isFacingRight = true;
-        if (mouseXCanvas < subX - 5) isFacingRight = false;
-
-        // 툴팁 업데이트
         const date = dateScale.invert(mouseXCanvas);
-        let status = "";
-        let statusColor = "#b0e0e6";
-
-        if(p.rawTemp > 0.8) { status = "🔥 Heatwave"; statusColor = "#FF7F50"; }
-        else if(p.rawTemp < -0.2) { status = "❄️ Cold Wave"; statusColor = "#4B0082"; }
-        if(p.rawPrecip > 1.2) {
-             status += (status ? " & " : "") + "☔ Heavy Rain";
-             if(statusColor === "#b0e0e6") statusColor = "#7fffd4";
-        }
-        if(status === "") status = "Normal";
-
-        tooltip.innerHTML = `
-            <div style="font-size:11px; color:#87CEEB; opacity:0.8;">${date.getFullYear()}</div>
-            <div style="font-size:16px; color:#fff;">${date.getMonth() + 1}월</div>
-            <div style="margin-top:4px; font-size:13px; font-weight:bold; color:${statusColor}; text-shadow: 0 0 5px ${statusColor}40;">${status}</div>
-        `;
+        let content = "";
         
-        tooltip.style.left = mouseXCanvas + "px";
-        tooltip.style.top = (mouseYCanvas - 30) + "px"; 
-        tooltip.style.opacity = 1;
-    });
+        // 1. Weather
+        if (activeLayers.weather) {
+            let dataRatio = Math.max(0, Math.min(1, (mouseXCanvas - PADDING_X) / EFFECTIVE_WIDTH));
+            const pWeather = points[Math.floor(dataRatio * steps)] || points[points.length-1];
+            
+            let status = "Normal"; let statusColor = "#b0e0e6";
+            if(pWeather.rawTemp > 0.8) { status = "🔥 Heatwave"; statusColor = "#FF7F50"; }
+            else if(pWeather.rawTemp < -0.2) { status = "❄️ Cold Wave"; statusColor = "#4B0082"; }
+            if(pWeather.rawPrecip > 1.2) { status += (status === "Normal" ? "" : " & ") + "☔ Heavy Rain"; if(statusColor === "#b0e0e6") statusColor = "#7fffd4"; }
+            
+            content += `<div style="color:${statusColor};font-weight:bold;margin-bottom:3px;">🌡️ Weather: ${status}</div>`;
+            
+            const lensRadius = 250; let scale = 0.35; let flowScale = 0.35;
+            if (Math.abs(pWeather.x - mouseXCanvas) < lensRadius) {
+                const expansion = Math.exp(-(Math.abs(pWeather.x - mouseXCanvas)**2) / (2 * (lensRadius/2.5)**2));
+                scale += expansion * 0.65; flowScale += expansion * 0.65;
+            }
+            const typhoonSurfaceY = baseCenterY + pWeather.baseFlow * flowScale + Math.sin(pWeather.t*5 + globalTime*0.5)*10 - (15 + pWeather.tempAmp * scale);
+            targetSubX = mouseXCanvas;
+            targetSubY = Math.max(typhoonSurfaceY, Math.min(mouseYCanvas, HEIGHT - 30));
+            if (mouseXCanvas > subX + 5) isFacingRight = true; if (mouseXCanvas < subX - 5) isFacingRight = false;
+        }
 
-    wrapper.addEventListener("mouseleave", function() {
-        isHovered = false;
-        tooltip.style.opacity = 0;
-    });
+        // 2. Harvest (Cabbage)
+        if (activeLayers.cabbage) {
+            const cYear = date.getFullYear(); const cMonth = date.getMonth() + 1;
+            const index = (cYear - 2020) * 12 + (cMonth - 1);
+            if (index >= 0 && index < dataValues.length) {
+                const val = dataValues[index];
+                content += `<div style="color:#00ff7f; font-size:11px; margin-top:2px;">🥬 Harvest: ${val} Tons</div>`;
+            }
+        }
 
-    window.addEventListener("mouseout", function(e) {
-        if (e.relatedTarget === null) {
-             isHovered = false;
-             tooltip.style.opacity = 0;
+        // 3. Price (Wave)
+        if (activeLayers.wave) {
+            const waveIdx = Math.round((mouseXCanvas - PADDING_X) / (EFFECTIVE_WIDTH/59));
+            if(waveIdx >= 0 && waveIdx < wavePoints.length) {
+                const pWave = wavePoints[waveIdx];
+                content += `<div style="color:#00bfff; font-size:11px; margin-top:2px;">📈 Price Index: ${pWave.value}%</div>`;
+            }
+        }
+
+        // 4. Inflation
+        if (activeLayers.inflation) {
+            let found = false;
+            for(let pt of inflationPoints) {
+                if (Math.abs(pt.x - mouseXCanvas) < 30) {
+                    content += `<div style="color:${pt.color}; font-size:11px; margin-top:2px;">💭 Perception: ${pt.inflation.toFixed(2)}%</div>`;
+                    found = true; break;
+                }
+            }
+            if(!found) {
+                 const infIdx = Math.round((mouseXCanvas - PADDING_X) / (EFFECTIVE_WIDTH/59));
+                 if(infIdx >= 0 && infIdx < inflationPoints.length) {
+                     const pt = inflationPoints[infIdx];
+                     content += `<div style="color:${pt.color}; font-size:11px; margin-top:2px;">💭 Perception: ${pt.inflation.toFixed(2)}%</div>`;
+                 }
+            }
+        }
+
+        if (content) {
+            tooltip.innerHTML = `<div style="font-size:10px; color:#aaa; border-bottom:1px solid #444; padding-bottom:3px; margin-bottom:3px;">${date.getFullYear()}.${date.getMonth()+1}</div>${content}`;
+            tooltip.style.left = tooltipX + 15 + "px"; 
+            tooltip.style.top = tooltipY + 15 + "px"; 
+            tooltip.style.opacity = 1;
+        } else {
+            tooltip.style.opacity = 0;
         }
     });
+
+    weatherWrapper.addEventListener("mouseleave", () => { isHovered = false; tooltip.style.opacity = 0; });
 
 </script>
-
 </body>
-
 </html>
