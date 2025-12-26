@@ -1,6 +1,15 @@
 // =========================================================
-// script.js (Load Data from CSV File)
+// script.js (Powered by processed_data.csv)
 // =========================================================
+
+// === 1. CSV DATA LOADED ===
+const csvData = {
+    dates: ['2020-01-01', '2020-02-01', '2020-03-01', '2020-04-01', '2020-05-01', '2020-06-01', '2020-07-01', '2020-08-01', '2020-09-01', '2020-10-01', '2020-11-01', '2020-12-01', '2021-01-01', '2021-02-01', '2021-03-01', '2021-04-01', '2021-05-01', '2021-06-01', '2021-07-01', '2021-08-01', '2021-09-01', '2021-10-01', '2021-11-01', '2021-12-01', '2022-01-01', '2022-02-01', '2022-03-01', '2022-04-01', '2022-05-01', '2022-06-01', '2022-07-01', '2022-08-01', '2022-09-01', '2022-10-01', '2022-11-01', '2022-12-01', '2023-01-01', '2023-02-01', '2023-03-01', '2023-04-01', '2023-05-01', '2023-06-01', '2023-07-01', '2023-08-01', '2023-09-01', '2023-10-01', '2023-11-01', '2023-12-01', '2024-01-01', '2024-02-01', '2024-03-01', '2024-04-01', '2024-05-01', '2024-06-01', '2024-07-01', '2024-08-01', '2024-09-01', '2024-10-01', '2024-11-01', '2024-12-01'],
+    temps: [-2.9, -0.3, 6.7, 12.3, 22.2, 27.6, 29.4, 25.5, 20.5, 13.1, 4.2, -0.5, -1.1, 0.8, 7.0, 15.4, 21.4, 28.5, 27.7, 24.5, 18.8, 10.2, 4.3, -0.8, -2.7, 1.6, 10.0, 15.8, 23.5, 27.7, 29.3, 22.9, 16.9, 10.0, 1.8, -2.1, -1.7, 1.0, 10.3, 17.2, 25.3, 27.8, 25.8, 23.7, 13.0, 7.7, 1.0, -2.9, -0.7, 3.1, 12.8, 18.9, 26.9, 28.4, 27.7, 24.6, 13.0, 5.7, 0.1, -3.2],
+    precips: [126, 0, 0, 126, 218, 249, 211, 115, 13, 138, 224, 249, 204, 103, 26, 149, 230, 247, 196, 91, 39, 159, 235, 245, 188, 78, 52, 169, 239, 242, 179, 65, 65, 179, 242, 239, 169, 52, 78, 188, 245, 235, 159, 39, 91, 196, 247, 230, 149, 26, 103, 204, 249, 224, 138, 13, 115, 211, 249, 218],
+    prices: [3500, 3464, 3310, 3088, 2870, 2725, 4234, 5489, 3371, 3344, 3626, 3828, 3903, 3842, 3668, 3442, 3233, 3110, 5233, 4869, 3508, 3804, 4075, 4254, 4302, 4214, 4025, 3796, 3600, 3500, 5166, 6302, 3966, 4262, 4519, 4675, 4695, 4583, 4380, 4152, 3971, 4073, 5612, 4658, 4425, 4719, 4960, 5090, 5082, 4948, 4734, 4510, 4346, 5428, 6437, 6200, 8884, 5174, 5396, 5500],
+    sentiments: [0.807, 0.747, 0.807, 0.855, 0.9, 0.95, 0.614, 0.312, 0.845, 0.81, 0.825, 0.701, 0.622, 0.69, 0.761, 0.815, 0.95, 0.821, 0.319, 0.463, 0.758, 0.773, 0.6, 0.639, 0.581, 0.545, 0.647, 0.719, 0.685, 0.655, 0.362, 0.25, 0.686, 0.585, 0.48, 0.448, 0.445, 0.455, 0.539, 0.566, 0.714, 0.689, 0.293, 0.561, 0.567, 0.42, 0.376, 0.351, 0.378, 0.457, 0.491, 0.561, 0.516, 0.336, 0.217, 0.183, 0.05, 0.359, 0.409, 0.268]
+};
 
 // === CONFIG ===
 const PADDING_X = 200;      
@@ -97,205 +106,97 @@ btns.inflation.addEventListener('click', () => toggleLayer('inflation'));
 
 
 // =========================================================
-// 1. GLOBAL VARIABLES & SETUP
+// 1. DATA PROCESSING & SETUP
 // =========================================================
 let targetScroll = 0;
 let currentScroll = 0;
 let globalTime = 0;
 
-// Data Containers
-let csvData = { dates: [], temps: [], precips: [], prices: [], sentiments: [] };
-let points = [];          // Weather
-let cabbageDataObj = {};  // Harvest
-let wavePoints = [];      // Price
-let inflationPoints = []; // Inflation
-
-// Canvas Contexts
+// --- Weather Setup ---
 const weatherContainer = d3.select("#weather-chart-container");
 weatherContainer.style("width", TOTAL_WIDTH + "px");
 const weatherCanvas = weatherContainer.append("canvas").attr("width", TOTAL_WIDTH).attr("height", HEIGHT);
 const ctxWeather = weatherCanvas.node().getContext("2d", { alpha: true });
 
-cabbageInner.style.width = TOTAL_WIDTH + "px";
-const ctxCabbage = document.getElementById('cabbageChart').getContext('2d');
-let myCabbageChart; // Will be initialized after data load
+// [수정] CSV 데이터를 보간(Interpolate)하여 연속적인 Weather Data 생성
+const steps = 800; // 캔버스 해상도
+const points = [];
+const dataLen = csvData.temps.length;
 
-waveInner.style.width = TOTAL_WIDTH + "px";
-const waveCanvas = document.getElementById('waveChart');
-waveCanvas.width = TOTAL_WIDTH; waveCanvas.height = HEIGHT;
-const ctxWave = waveCanvas.getContext("2d", { alpha: true });
+// 보간 함수
+function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
 
-inflationInner.style.width = TOTAL_WIDTH + "px";
-const inflationCanvas = document.getElementById('inflationChart');
-inflationCanvas.width = TOTAL_WIDTH; inflationCanvas.height = HEIGHT;
-const ctxInflation = inflationCanvas.getContext('2d', { alpha: true });
+for (let i = 0; i <= steps; i++) {
+    const t = i / steps; // 0.0 ~ 1.0
+    
+    // CSV 데이터 인덱스로 매핑
+    const floatIndex = t * (dataLen - 1);
+    const idx1 = Math.floor(floatIndex);
+    const idx2 = Math.min(idx1 + 1, dataLen - 1);
+    const ratio = floatIndex - idx1;
 
-// Assets
-const subImg = new Image(); subImg.src = "submarine.png"; 
-const cloudImg = new Image(); cloudImg.src = "cloud.png";
-const tintCanvas = document.createElement('canvas');
-const tintCtx = tintCanvas.getContext('2d');
+    // 데이터 가져오기 및 보간
+    const tempVal1 = csvData.temps[idx1];
+    const tempVal2 = csvData.temps[idx2];
+    const rawTemp = lerp(tempVal1, tempVal2, ratio);
 
-let subX = -100; let subY = -100; let targetSubX = -100; let targetSubY = -100; let isFacingRight = true; 
-const baseCenterY = HEIGHT / 2 + 50;
-let cabbageTime = 0;
+    const precipVal1 = csvData.precips[idx1];
+    const precipVal2 = csvData.precips[idx2];
+    const rawPrecip = lerp(precipVal1, precipVal2, ratio);
 
-// Scales (Will be defined in init functions)
-let colorRain, yScaleWave, colorScaleWave, yScaleInf, colorScaleInf, rScaleInf;
-let lineGenerator;
+    // 시각화를 위한 정규화 및 증폭
+    const baseFlow = Math.sin(t * Math.PI * 10) * 15;
+    
+    // Temp: -5 ~ 30 -> 높이 변화로 매핑
+    const tempAmp = (rawTemp - 15) * 5; // 15도를 기준으로 위아래
 
+    // Precip: 0 ~ 250 -> 파도 거칠기로 매핑
+    const precipAmp = (rawPrecip / 100) * 15; 
 
-// =========================================================
-// 2. DATA LOADING & INITIALIZATION
-// =========================================================
+    // Typhoon: 8, 9월(여름) 부근에 랜덤하게 발생하도록 시뮬레이션
+    let typhoonVal = 0.2;
+    // (간단히 rawTemp가 높고 precip이 높은 구간을 태풍으로 간주)
+    if (rawTemp > 25 && rawPrecip > 150) typhoonVal += 1.5;
 
-fetch('processed_data.csv')
-    .then(response => {
-        if (!response.ok) throw new Error("CSV load failed");
-        return response.text();
-    })
-    .then(text => {
-        // Parse CSV
-        const rows = text.trim().split('\n').slice(1); // Skip header
-        rows.forEach(row => {
-            if(!row.trim()) return;
-            const cols = row.split(',');
-            csvData.dates.push(cols[0]);
-            csvData.temps.push(parseFloat(cols[1]));
-            csvData.precips.push(parseInt(cols[2]));
-            csvData.prices.push(parseInt(cols[3]));
-            csvData.sentiments.push(parseFloat(cols[4]));
-        });
-
-        console.log("Data Loaded:", csvData.dates.length, "rows");
-
-        // Initialize All Charts
-        initWeather();
-        initCabbage();
-        initWave();
-        initInflation();
-
-        // Start Animation Loop
-        masterLoop();
-    })
-    .catch(err => {
-        console.error(err);
-        alert("데이터를 불러오는데 실패했습니다. 로컬 서버(Live Server 등)를 통해 실행해주세요.");
+    points.push({ 
+        t: t, 
+        x: PADDING_X + (t * EFFECTIVE_WIDTH), 
+        baseFlow: baseFlow, 
+        tempAmp: tempAmp, 
+        precipAmp: precipAmp, 
+        typhoonAmp: typhoonVal * 20, 
+        rawTemp: rawTemp, 
+        rawPrecip: rawPrecip 
     });
-
-
-// --- Initialization Functions ---
-
-function initWeather() {
-    const steps = 800; 
-    const dataLen = csvData.temps.length;
-    function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
-
-    for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const floatIndex = t * (dataLen - 1);
-        const idx1 = Math.floor(floatIndex);
-        const idx2 = Math.min(idx1 + 1, dataLen - 1);
-        const ratio = floatIndex - idx1;
-
-        const rawTemp = lerp(csvData.temps[idx1], csvData.temps[idx2], ratio);
-        const rawPrecip = lerp(csvData.precips[idx1], csvData.precips[idx2], ratio);
-
-        const baseFlow = Math.sin(t * Math.PI * 10) * 15;
-        const tempAmp = (rawTemp - 15) * 5; 
-        const precipAmp = (rawPrecip / 100) * 15; 
-
-        let typhoonVal = 0.2;
-        if (rawTemp > 25 && rawPrecip > 150) typhoonVal += 1.5;
-
-        points.push({ 
-            t, x: PADDING_X + (t * EFFECTIVE_WIDTH), baseFlow, tempAmp, precipAmp, 
-            typhoonAmp: typhoonVal * 20, rawTemp, rawPrecip 
-        });
-    }
-    colorRain = d3.scaleSequential(d3.interpolateRgb("#00ced1", "#7fffd4")).domain([0, 200]);
 }
 
-function initCabbage() {
-    const labels = []; const data = [];
+const colorRain = d3.scaleSequential(d3.interpolateRgb("#00ced1", "#7fffd4")).domain([0, 200]);
+const defaultTempColor = "#006994"; 
+const baseCenterY = HEIGHT / 2 + 50;
+const subImg = new Image(); subImg.src = "submarine.png"; 
+let subX = -100; let subY = -100; let targetSubX = -100; let targetSubY = -100; let isFacingRight = true; 
+
+// --- Cabbage Setup (Harvest) ---
+// [수정] CSV의 Price 데이터를 역수로 변환하여 가상의 수확량 데이터 생성 (가격 높음 = 수확량 적음 가정)
+cabbageInner.style.width = TOTAL_WIDTH + "px";
+let cabbageTime = 0;
+const cabbageDataObj = (() => {
+    const labels = []; 
+    const data = [];
     csvData.dates.forEach((dateStr, i) => {
         const [y, m] = dateStr.split("-");
         labels.push({ year: y, month: parseInt(m) });
-        // Price 역산
+        
+        // 가격(Price)을 수확량으로 역변환 (예: 5000원 -> 작게, 2000원 -> 크게)
+        // 시각적으로 적절한 높이가 나오도록 스케일링
         const price = csvData.prices[i];
-        const simulatedHarvest = Math.floor(1500000 / price); 
+        const simulatedHarvest = Math.floor(1500000 / price); // 적절한 상수로 나눔
         data.push(simulatedHarvest);
     });
-    cabbageDataObj = { labels, data };
+    return { labels, data };
+})();
 
-    // Create Chart
-    myCabbageChart = new Chart(ctxCabbage, {
-        type: 'bar',
-        data: { labels: cabbageDataObj.labels, datasets: [{ data: cabbageDataObj.data, backgroundColor: 'transparent', borderColor: 'transparent' }] },
-        plugins: [seaweedPlugin],
-        options: {
-            responsive: true, maintainAspectRatio: false, animation: false,
-            layout: { padding: { bottom: 60, top: 50 } },
-            plugins: { legend: { display: false }, tooltip: { enabled: false } }, 
-            scales: { x: { display: false }, y: { display: false, beginAtZero: true } }
-        }
-    });
-}
-
-function initWave() {
-    wavePoints = csvData.prices.map((price, i) => {
-        const [y, m] = csvData.dates[i].split("-");
-        return {
-            x: PADDING_X + (i / (csvData.prices.length - 1)) * EFFECTIVE_WIDTH,
-            y: 0, value: price, year: y, month: parseInt(m)
-        };
-    });
-
-    yScaleWave = d3.scaleLinear().domain([2000, 9000]).range([0, -350]); 
-    colorScaleWave = d3.scaleSequential(d3.interpolateCool).domain([2000, 9000]);
-    
-    lineGenerator = d3.line()
-        .x(d => d.x)
-        .y(d => (HEIGHT * 0.7) + yScaleWave(d.value))
-        .curve(d3.curveCatmullRom.alpha(0.5))
-        .context(ctxWave);
-}
-
-function initInflation() {
-    csvData.sentiments.forEach((score, i) => {
-        const progress = i / (csvData.sentiments.length - 1);
-        const x = PADDING_X + (progress * EFFECTIVE_WIDTH);
-        const date = new Date(csvData.dates[i]);
-        
-        // 역산 (1 - score)
-        const inflationMetric = (1 - score) * 10; 
-        const count = 500 + Math.random() * 1000;
-
-        inflationPoints.push({ 
-            x, inflation: inflationMetric, count, date, 
-            phase: Math.random() * Math.PI * 2, 
-            speed: 0.02 + Math.random() * 0.03, 
-            floatAmp: 5 + Math.random() * 10 
-        });
-    });
-
-    yScaleInf = d3.scaleLinear().domain([0, 10]).range([HEIGHT - 200, 20]);
-    colorScaleInf = d3.scaleSequential(d3.interpolateRgb("#00BFFF", "#FF3333")).domain([2, 8]);
-    rScaleInf = d3.scaleSqrt().domain([0, 1500]).range([30, 90]);
-
-    inflationPoints.forEach(p => { 
-        p.y = yScaleInf(p.inflation); 
-        p.color = colorScaleInf(p.inflation); 
-        p.radius = rScaleInf(p.count); 
-    });
-}
-
-
-// =========================================================
-// 3. PLUGINS & RENDER LOGIC
-// =========================================================
-
-// [Seaweed Plugin]
+// [복구] 해초 플러그인 (이미지 제거, 원래의 그리기 방식)
 const seaweedPlugin = {
     id: 'seaweedGraph',
     afterDatasetsDraw: (chart) => {
@@ -315,6 +216,7 @@ const seaweedPlugin = {
             const bottomY = yAxis.getPixelForValue(0);
             const topY = bar.y;
             
+            // 그라데이션 설정
             const gradient = ctx.createLinearGradient(centerX, bottomY, centerX, topY);
             gradient.addColorStop(0, `hsla(120, 90%, 40%, 0.85)`); 
             gradient.addColorStop(1, `hsla(120, 90%, 75%, 0.5)`); 
@@ -323,11 +225,13 @@ const seaweedPlugin = {
             ctx.beginPath();
             const width = 20;
             
+            // 왼쪽 라인 (흔들림 효과)
             for (let y = bottomY; y >= topY; y -= 5) {
                 const sway = Math.sin(y * 0.015 + cabbageTime * 0.7 + index * 0.5) * ((bottomY - y) / (bottomY - topY) * 6);
                 ctx.lineTo(centerX - width/2 + sway, y);
             }
             
+            // 상단
             ctx.quadraticCurveTo(
                 centerX + Math.sin(topY*0.015+cabbageTime*0.7+index*0.5)*6, 
                 topY-10, 
@@ -335,6 +239,7 @@ const seaweedPlugin = {
                 topY
             );
             
+            // 오른쪽 라인
             for (let y = topY; y <= bottomY; y += 5) {
                 const sway = Math.sin(y * 0.015 + cabbageTime * 0.7 + index * 0.5) * ((bottomY - y) / (bottomY - topY) * 6);
                 ctx.lineTo(centerX + width/2 + sway, y);
@@ -350,6 +255,19 @@ const seaweedPlugin = {
         ctx.restore();
     }
 };
+
+const ctxCabbage = document.getElementById('cabbageChart').getContext('2d');
+const myCabbageChart = new Chart(ctxCabbage, {
+    type: 'bar',
+    data: { labels: cabbageDataObj.labels, datasets: [{ data: cabbageDataObj.data, backgroundColor: 'transparent', borderColor: 'transparent' }] },
+    plugins: [seaweedPlugin],
+    options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        layout: { padding: { bottom: 60, top: 50 } },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } }, 
+        scales: { x: { display: false }, y: { display: false, beginAtZero: true } }
+    }
+});
 
 const customAxisPlugin = {
     id: 'customAxis',
@@ -374,10 +292,85 @@ const customAxisPlugin = {
 };
 Chart.register(customAxisPlugin);
 
+// --- Wave Setup (Price) ---
+waveInner.style.width = TOTAL_WIDTH + "px";
+const waveCanvas = document.getElementById('waveChart');
+waveCanvas.width = TOTAL_WIDTH; waveCanvas.height = HEIGHT;
+const ctxWave = waveCanvas.getContext("2d", { alpha: true });
+
+// [수정] CSV Price 데이터 사용
+const wavePoints = csvData.prices.map((price, i) => {
+    const [y, m] = csvData.dates[i].split("-");
+    return {
+        x: PADDING_X + (i / (csvData.prices.length - 1)) * EFFECTIVE_WIDTH,
+        y: 0, 
+        value: price,
+        year: y,
+        month: parseInt(m)
+    };
+});
+
+// Price Range: ~2700 to ~8900
+const yScaleWave = d3.scaleLinear().domain([2000, 9000]).range([0, -350]); 
+const colorScaleWave = d3.scaleSequential(d3.interpolateCool).domain([2000, 9000]);
+const waveCenterY = HEIGHT * 0.7; // 위치 조금 내림
+
+const lineGenerator = d3.line().x(d => d.x).y(d => waveCenterY + yScaleWave(d.value)).curve(d3.curveCatmullRom.alpha(0.5)).context(ctxWave);
+
+// --- Inflation Setup (Sentiment as Clouds) ---
+inflationInner.style.width = TOTAL_WIDTH + "px";
+const inflationCanvas = document.getElementById('inflationChart');
+inflationCanvas.width = TOTAL_WIDTH; inflationCanvas.height = HEIGHT;
+const ctxInflation = inflationCanvas.getContext('2d', { alpha: true });
+
+// [유지] 구름 이미지 로드
+const cloudImg = new Image();
+cloudImg.src = "cloud.png";
+
+const tintCanvas = document.createElement('canvas');
+const tintCtx = tintCanvas.getContext('2d');
+
+const inflationPoints = [];
+csvData.sentiments.forEach((score, i) => {
+    const progress = i / (csvData.sentiments.length - 1);
+    const x = PADDING_X + (progress * EFFECTIVE_WIDTH);
+    const date = new Date(csvData.dates[i]);
+    
+    // Sentiment(0~1) -> Inflation Perception (High means Bad)
+    // 점수가 낮을수록(부정적일수록) 인플레이션 우려가 크다고 가정 -> 높이 위치 상단으로, 빨간색
+    const inflationMetric = (1 - score) * 10; // 0 ~ 10
+    
+    // 구름 크기용 카운트 (랜덤성 부여)
+    const count = 500 + Math.random() * 1000;
+
+    inflationPoints.push({ 
+        x: x, 
+        inflation: inflationMetric, 
+        count: count, 
+        date: date, 
+        phase: Math.random() * Math.PI * 2, 
+        speed: 0.02 + Math.random() * 0.03, 
+        floatAmp: 5 + Math.random() * 10 
+    });
+});
+
+// [유지] 구름 위치 상향 조정
+const yScaleInf = d3.scaleLinear().domain([0, 10]).range([HEIGHT - 100, 50]);
+const colorScaleInf = d3.scaleSequential(d3.interpolateRgb("#00BFFF", "#FF3333")).domain([2, 8]);
+const rScaleInf = d3.scaleSqrt().domain([0, 1500]).range([30, 90]);
+
+inflationPoints.forEach(p => { 
+    p.y = yScaleInf(p.inflation); 
+    p.color = colorScaleInf(p.inflation); 
+    p.radius = rScaleInf(p.count); 
+});
+
 
 // =========================================================
-// 4. MASTER LOOP
+// 2. MASTER RENDER LOOP
 // =========================================================
+let mouseXCanvas = -1000; let mouseYCanvas = -1000; let isHovered = false;
+
 function masterLoop() {
     globalTime = Date.now() / 300;
 
@@ -428,15 +421,17 @@ function masterLoop() {
         ctxWeather.save(); ctxWeather.textAlign = "center"; ctxWeather.shadowColor = "rgba(255, 255, 255, 0.8)"; ctxWeather.shadowBlur = 8;
         ctxWeather.fillStyle = "rgba(255, 255, 255, 0.9)";
         
-        const dataLen = csvData.dates.length;
+        // 날짜 라벨 표시 (데이터 기반)
+        const labelStep = Math.floor(csvData.dates.length / 10); // 너무 많으니 적당히 건너뛰며 표시
         csvData.dates.forEach((dateStr, i) => {
             const x = PADDING_X + (i / (dataLen - 1)) * EFFECTIVE_WIDTH;
             if (x < visibleMin || x > visibleMax) return;
+            
             const [y, m] = dateStr.split("-");
             if (m === '01') {
                 ctxWeather.font = "bold 13px sans-serif"; ctxWeather.fillStyle = "rgba(255, 255, 255, 0.7)"; ctxWeather.fillText(y, x, HEIGHT - 35); 
                 ctxWeather.font = "bold 16px sans-serif"; ctxWeather.fillStyle = "rgba(255, 255, 255, 1.0)"; ctxWeather.fillText(m, x, HEIGHT - 15);
-            } else if (i % 3 === 0) { 
+            } else if (i % 3 === 0) { // 3개월마다 표시
                 ctxWeather.font = "12px sans-serif"; ctxWeather.fillStyle = "rgba(255, 255, 255, 0.5)"; ctxWeather.fillText(m, x, HEIGHT - 15);
             }
         });
@@ -463,13 +458,12 @@ function masterLoop() {
     }
 
     // --- Cabbage Render ---
-    if (activeLayers.cabbage && myCabbageChart) { myCabbageChart.draw(); }
+    if (activeLayers.cabbage) { myCabbageChart.draw(); }
 
     // --- Wave Render ---
     ctxWave.clearRect(0, 0, TOTAL_WIDTH, HEIGHT);
     if (activeLayers.wave) {
-        const waveCenterY = HEIGHT * 0.7;
-        const zeroY = waveCenterY + yScaleWave(2000); 
+        const zeroY = waveCenterY + yScaleWave(2000); // Base price line
         ctxWave.beginPath(); ctxWave.moveTo(0, zeroY); ctxWave.lineTo(TOTAL_WIDTH, zeroY);
         ctxWave.strokeStyle = "rgba(255, 255, 255, 0.1)"; ctxWave.lineWidth = 1; ctxWave.stroke();
 
@@ -494,7 +488,7 @@ function masterLoop() {
             ctxWave.beginPath(); ctxWave.arc(p.x, waveCenterY + yScaleWave(p.value), radius, 0, Math.PI * 2); ctxWave.fillStyle = "#fff"; ctxWave.fill();
         });
 
-        // Axis
+        // Axis (Only if weather is hidden)
         if (!activeLayers.weather) {
             ctxWave.save(); ctxWave.textAlign = "center"; ctxWave.shadowColor = "rgba(255, 255, 255, 0.8)"; ctxWave.shadowBlur = 8;
             wavePoints.forEach((p, i) => {
@@ -514,7 +508,7 @@ function masterLoop() {
     // --- Inflation Render ---
     ctxInflation.clearRect(0, 0, TOTAL_WIDTH, HEIGHT);
     if (activeLayers.inflation) {
-        // Axis
+        // Axis (Only if others are hidden)
         if (!activeLayers.weather && !activeLayers.wave) {
             ctxInflation.save(); ctxInflation.textAlign = "center"; ctxInflation.shadowColor = "rgba(255, 255, 255, 0.8)"; ctxInflation.shadowBlur = 8;
             inflationPoints.forEach((p, i) => {
@@ -535,6 +529,7 @@ function masterLoop() {
             inflationPoints.forEach(p => {
                 if (p.x < visibleMin || p.x > visibleMax) return;
                 
+                // 둥실거리는 움직임
                 const floatY = Math.sin((globalTime * p.speed * 3) + p.phase) * (p.floatAmp * 2);
                 const currentY = p.y + floatY;
                 
@@ -543,8 +538,10 @@ function masterLoop() {
 
                 tintCanvas.width = cloudW;
                 tintCanvas.height = cloudH;
+                
                 tintCtx.clearRect(0, 0, cloudW, cloudH);
                 tintCtx.drawImage(cloudImg, 0, 0, cloudW, cloudH);
+                
                 tintCtx.globalCompositeOperation = 'source-in';
                 tintCtx.fillStyle = p.color; 
                 tintCtx.fillRect(0, 0, cloudW, cloudH);
@@ -558,11 +555,12 @@ function masterLoop() {
 
     requestAnimationFrame(masterLoop);
 }
+masterLoop(); 
 
 
 // === UNIFIED TOOLTIP FIX ===
 const tooltip = document.getElementById("tooltip");
-const dateScale = d3.scaleTime().domain([new Date('2020-01-01'), new Date('2024-12-01')]).range([PADDING_X, PADDING_X + EFFECTIVE_WIDTH]);
+const dateScale = d3.scaleTime().domain([new Date(csvData.dates[0]), new Date(csvData.dates[csvData.dates.length-1])]).range([PADDING_X, PADDING_X + EFFECTIVE_WIDTH]);
 
 window.addEventListener("mousemove", function(event) {
     const winWidth = window.innerWidth;
@@ -583,16 +581,14 @@ window.addEventListener("mousemove", function(event) {
     }
     isHovered = true;
 
-    // 데이터가 아직 로드되지 않았으면 무시
-    if (csvData.dates.length === 0) return;
-
-    const dataLen = csvData.dates.length;
+    // 데이터 인덱스 계산
     const rawIdx = (mouseXCanvas - PADDING_X) / (EFFECTIVE_WIDTH / (dataLen - 1));
     const idx = Math.round(rawIdx);
     
     if (idx < 0 || idx >= dataLen) return;
 
     const dateStr = csvData.dates[idx];
+    
     let content = "";
     
     // 1. Weather Info
@@ -607,8 +603,8 @@ window.addEventListener("mousemove", function(event) {
         
         content += `<div style="color:${statusColor};font-weight:bold;margin-bottom:3px;">🌡️ ${temp}°C / ☔ ${precip}mm</div>`;
         
-        // 잠수함 위치 (보간된 points 배열에서 매핑)
-        const pWeather = points[Math.floor((rawIdx / (dataLen - 1)) * 800)] || points[points.length-1];
+        // 잠수함 타겟 위치 업데이트
+        const pWeather = points[Math.floor((rawIdx / (dataLen - 1)) * steps)] || points[points.length-1];
         if (pWeather) {
             const typhoonSurfaceY = baseCenterY + pWeather.baseFlow + Math.sin(pWeather.t*5 + globalTime*0.5)*10 - (15 + pWeather.tempAmp * 0.35);
             targetSubX = mouseXCanvas;
@@ -620,6 +616,7 @@ window.addEventListener("mousemove", function(event) {
 
     // 2. Harvest (Cabbage)
     if (activeLayers.cabbage) {
+        // 역산된 수확량 표시
         const val = cabbageDataObj.data[idx];
         content += `<div style="color:#00ff7f; font-size:11px; margin-top:2px;">🥬 Est. Harvest: ${val}</div>`;
     }
@@ -633,6 +630,7 @@ window.addEventListener("mousemove", function(event) {
     // 4. Inflation
     if (activeLayers.inflation) {
         const score = csvData.sentiments[idx];
+        // 점수가 낮을수록 부정적(High Inflation Fear)
         const inflationPerc = ((1 - score) * 10).toFixed(1);
         content += `<div style="color:#FF7F50; font-size:11px; margin-top:2px;">💭 Infl. Risk: ${inflationPerc}</div>`;
     }
