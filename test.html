@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Integrated Analytics - Tooltip Fixed</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            background: linear-gradient(to bottom, #001f3f, #000810);
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            color: #b0e0e6;
+            user-select: none;
+        }
+
+        /* --- UI Layer --- */
+        #ui-layer {
+            position: fixed; top: 20px; left: 0; width: 100%;
+            display: flex; flex-direction: column; align-items: center;
+            z-index: 100; pointer-events: none; 
+        }
+
+        h1 {
+            font-size: 24px; margin: 0 0 10px 0;
+            letter-spacing: 4px; text-transform: uppercase; font-weight: 300;
+            color: #fff; text-shadow: 0 0 15px rgba(0, 191, 255, 0.6);
+            transition: text-shadow 0.3s, color 0.3s;
+        }
+
+        .btn-group {
+            display: flex; gap: 10px; pointer-events: auto; margin-bottom: 15px;
+        }
+
+        button {
+            padding: 8px 16px; 
+            background: rgba(20, 20, 30, 0.6); 
+            border: 1px solid #555; 
+            color: #777; 
+            border-radius: 20px;
+            cursor: pointer; font-family: inherit; font-size: 13px;
+            transition: all 0.2s ease; backdrop-filter: blur(4px);
+            opacity: 0.7;
+        }
+        
+        button:hover { opacity: 1; border-color: #aaa; }
+
+        button.active {
+            opacity: 1; font-weight: bold; border-color: transparent; color: #001f3f;
+        }
+        
+        #btn-weather.active { background: #00ced1; box-shadow: 0 0 15px #00ced1; }
+        #btn-cabbage.active { background: #00ff7f; box-shadow: 0 0 15px #00ff7f; }
+        #btn-wave.active { background: #00bfff; color: #fff; box-shadow: 0 0 15px #00bfff; }
+        #btn-inflation.active { background: #ff4500; color: white; box-shadow: 0 0 15px #ff4500; }
+
+        .legend-wrapper {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 5px; pointer-events: auto; min-height: 20px;
+        }
+        .legend-container {
+            display: flex; gap: 15px; font-size: 11px; color: #87CEEB;
+            font-weight: 500; align-items: center; height: 20px; transition: opacity 0.3s;
+        }
+        .legend-item { display: flex; align-items: center; }
+        .box {
+            width: 10px; height: 10px; border-radius: 50%;
+            margin-right: 6px; box-shadow: 0 0 5px currentColor;
+        }
+        .legend-spectrum {
+            width: 80px; height: 6px; border-radius: 3px;
+            background: linear-gradient(to right, hsla(120, 80%, 80%, 0.7), hsla(120, 100%, 20%, 0.7));
+            margin: 0 6px;
+        }
+
+        /* --- View Containers --- */
+        .view-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            transition: opacity 0.3s ease; 
+            pointer-events: none; 
+        }
+        .visible-view { opacity: 1; }
+        .hidden-view { opacity: 0; }
+
+        /* Layer Priority */
+        #weather-view { z-index: 1; }   /* 1층 */
+        #wave-view    { z-index: 2; }   /* 2층 */
+        #cabbage-view { z-index: 3; }   /* 3층 */
+        #inflation-view { z-index: 4; } /* 4층 */
+        
+        canvas { pointer-events: auto; }
+
+        /* Scroll Wrapper */
+        #scroll-wrapper {
+            width: 100vw; height: 100vh;
+            overflow-x: auto; overflow-y: hidden;
+            scrollbar-width: none; 
+            display: flex; align-items: flex-end; 
+        }
+        #scroll-wrapper::-webkit-scrollbar { display: none; }
+        #weather-chart-container { position: relative; height: 600px; flex-shrink: 0; }
+        
+        /* [수정] 툴팁을 body로 빼냈으므로 fixed 포지션 사용 */
+        #tooltip {
+            position: fixed; /* absolute -> fixed */
+            background: rgba(0, 10, 20, 0.90); color: #fff;
+            padding: 12px 16px; border-radius: 12px; font-size: 12px;
+            pointer-events: none; opacity: 0; transition: opacity 0.1s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
+            z-index: 9999; /* 최상단 */
+            white-space: nowrap; transform: translate(-50%, -130%);
+            backdrop-filter: blur(8px);
+            line-height: 1.8;
+        }
+
+        /* Layouts */
+        #cabbage-viewport, #inflation-viewport, #wave-viewport {
+            width: 100%; height: 100%; 
+            position: absolute; top: 0; left: 0;
+            overflow: hidden; display: flex; align-items: flex-end; 
+        }
+        
+        #cabbage-viewport { transition: height 0.5s ease; bottom: 0; top: auto; }
+        #cabbage-viewport.merged-mode { height: 35%; } 
+        
+        #cabbage-chart-inner { position: absolute; height: 100%; width: 4400px; bottom: 0; will-change: transform; }
+        #inflation-chart-inner { height: 600px; width: 4400px; position: relative; flex-shrink: 0; will-change: transform; }
+        #wave-chart-inner { height: 600px; width: 4400px; position: relative; flex-shrink: 0; will-change: transform; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1 id="main-title">Integrated Analytics</h1>
+        
+        <div class="btn-group">
+            <button id="btn-weather" class="active">Weather</button>
+            <button id="btn-cabbage">Harvest</button>
+            <button id="btn-wave">Price</button>
+            <button id="btn-inflation">Inflation</button>
+        </div>
+
+        <div class="legend-wrapper">
+            <div class="legend-container" id="weather-legend">
+                <div class="legend-item"><div class="box" style="background:radial-gradient(circle, #FF7F50, #006994); color: #FF7F50;"></div>Temp</div>
+                <div class="legend-item"><div class="box" style="background:linear-gradient(to right, #00ced1, #7fffd4); color: #00ced1;"></div>Rain</div>
+                <div class="legend-item"><div class="box" style="background:#000030; color: #000080;"></div>Typhoon</div>
+            </div>
+            <div class="legend-container" id="cabbage-legend" style="display: none;">
+                <div class="legend-item">Low</div>
+                <div class="legend-spectrum"></div>
+                <div class="legend-item">High</div>
+            </div>
+            <div class="legend-container" id="wave-legend" style="display: none;">
+                <div class="legend-item"><div class="box" style="background: #00bfff; box-shadow: 0 0 5px #00bfff;"></div>Price Index</div>
+            </div>
+            <div class="legend-container" id="inflation-legend" style="display: none;">
+                <div class="legend-item"><div class="box" style="background: #FF3333;"></div>High Perc.</div>
+                <div class="legend-item"><div class="box" style="background: #00BFFF;"></div>Stable</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip"></div>
+
+    <div id="weather-view" class="view-container visible-view">
+        <div id="scroll-wrapper">
+            <div id="weather-chart-container"></div>
+        </div>
+    </div>
+
+    <div id="cabbage-view" class="view-container hidden-view">
+        <div id="cabbage-viewport">
+            <div id="cabbage-chart-inner">
+                <canvas id="cabbageChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="wave-view" class="view-container hidden-view">
+        <div id="wave-viewport">
+            <div id="wave-chart-inner">
+                <canvas id="waveChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div id="inflation-view" class="view-container hidden-view">
+        <div id="inflation-viewport">
+            <div id="inflation-chart-inner">
+                 <canvas id="inflationChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js" defer></script>
+</body>
+</html>
